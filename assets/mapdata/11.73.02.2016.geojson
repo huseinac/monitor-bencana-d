@@ -1,0 +1,10 @@
+{
+"type": "FeatureCollection",
+"name": "KDEPUM_11",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::9518" } },
+"xy_coordinate_resolution": 1e-15,
+"z_coordinate_resolution": 1e-15,
+"features": [
+{ "type": "Feature", "properties": { "OBJECTID": 9622, "NAMOBJ": "Lancang Garam", "FCODE": "BA03070040", "REMARK": " ", "METADATA": "TASWIL1000020221102_DATA_BATAS_DESAKELURAHAN", "SRS_ID": "4326", "KDBBPS": " ", "KDCBPS": " ", "KDCPUM": "11.73.02", "KDEBPS": " ", "KDEPUM": "11.73.02.2016", "KDPBPS": " ", "KDPKAB": "11.73", "KDPPUM": "11", "LUASWH": 0.0, "TIPADM": 1, "WADMKC": "Banda Sakti", "WADMKD": "Lancang Garam", "WADMKK": "Kota Lhokseumawe", "WADMPR": "Aceh", "WIADKC": " ", "WIADKK": " ", "WIADPR": " ", "WIADKD": " ", "UUPP": "Hasil Delineasi Batas Desa 2019", "luas": 0.226513237491, "SHAPE_Length": 0.01757952804883213, "SHAPE_Area": 1.8475630699877282e-05, "LAYER": "ADMINISTRASI_AR_DESAKEL" }, "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 97.148084290000043, 5.178983641000059, 0.0 ], [ 97.144481239000072, 5.180320477000066, 0.0 ], [ 97.144907176000061, 5.181657633000043, 0.0 ], [ 97.145649882000043, 5.183968162000042, 0.0 ], [ 97.147668125000052, 5.184091002000059, 0.0 ], [ 97.149952250000069, 5.184250023000061, 0.0 ], [ 97.149960694000072, 5.184195583000076, 0.0 ], [ 97.148084290000043, 5.178983641000059, 0.0 ] ] ] ] } }
+]
+}

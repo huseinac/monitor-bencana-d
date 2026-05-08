@@ -1,0 +1,10 @@
+{
+"type": "FeatureCollection",
+"name": "KDEPUM_11",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::9518" } },
+"xy_coordinate_resolution": 1e-15,
+"z_coordinate_resolution": 1e-15,
+"features": [
+{ "type": "Feature", "properties": { "OBJECTID": 8202, "NAMOBJ": "Gampong Baro", "FCODE": "BA03070040", "REMARK": " ", "METADATA": "TASWIL1000020221102_DATA_BATAS_DESAKELURAHAN", "SRS_ID": "4326", "KDBBPS": " ", "KDCBPS": " ", "KDCPUM": "11.01.10", "KDEBPS": " ", "KDEPUM": "11.01.10.2017", "KDPBPS": " ", "KDPKAB": "11.01", "KDPPUM": "11", "LUASWH": 0.0, "TIPADM": 1, "WADMKC": "Pasi Raja", "WADMKD": "Gampong Baro", "WADMKK": "Aceh Selatan", "WADMPR": "Aceh", "WIADKC": " ", "WIADKK": " ", "WIADPR": " ", "WIADKD": " ", "UUPP": "Hasil Delineasi Batas Desa 2019", "luas": 0.46631502797000002, "SHAPE_Length": 0.024507966568013625, "SHAPE_Area": 3.7941027710292423e-05, "LAYER": "ADMINISTRASI_AR_DESAKEL" }, "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 97.298604730000079, 3.188336495000044, 0.0 ], [ 97.292765816000042, 3.184755654000071, 0.0 ], [ 97.291340424000055, 3.187923554000065, 0.0 ], [ 97.290016207000065, 3.190304401000049, 0.0 ], [ 97.293088112000078, 3.192405671000074, 0.0 ], [ 97.294481519000044, 3.191872973000045, 0.0 ], [ 97.295648645000085, 3.191976479000061, 0.0 ], [ 97.296213766000051, 3.192125196000063, 0.0 ], [ 97.298208943000077, 3.189199768000037, 0.0 ], [ 97.298604730000079, 3.188336495000044, 0.0 ] ] ] ] } }
+]
+}
