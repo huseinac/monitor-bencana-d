@@ -105,6 +105,23 @@ class _MyHomePageState extends State<MyHomePage> {
   final ScrollController _pekerjaanScrollController = ScrollController();
   int _selectedPekerjaanIndex = 0;
 
+  //Widget _buildTableRow(int index) {
+  //  return Container(
+  //    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+  //    decoration: const BoxDecoration(
+  //      border: Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
+  //    ),
+  //    child: Row(
+  //      children: [
+  //        Expanded(flex: 1, child: Text("$index", style: const TextStyle(color: Colors.white, fontSize: 11))),
+  //        const Expanded(flex: 4, child: Text("Kab. Bireuen", style: TextStyle(color: Colors.white, fontSize: 11))),
+  //        const Expanded(flex: 3, child: Text("Rp 12.500.000", style: TextStyle(color: Colors.cyanAccent, fontSize: 11))),
+  //        const Expanded(flex: 2, child: Text("85%", style: TextStyle(color: Colors.white, fontSize: 11))),
+  //      ],
+  //    ),
+  //  );
+  //}
+
   Widget _buildPekerjaanHeader() {
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -255,8 +272,13 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   final PopupController _popupLayerController = PopupController();
+  Map<String, dynamic>? _selectedProjectDetail;
+  bool _isShowProjectDetailPanel = false;
 
   Widget _buildMarkerPopup(Marker marker) {
+    // Extract the project data we stored in the Key
+    final project = (marker.key as ValueKey).value as Map<String, dynamic>;
+
     return Container(
       width: 300,
       padding: const EdgeInsets.all(15),
@@ -269,31 +291,37 @@ class _MyHomePageState extends State<MyHomePage> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Aceh - Kab. Bireuen", // Use dynamic data here
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+          Text(
+            project['wilayah']['nama'] ?? "Lokasi",
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
           ),
           const Divider(color: Colors.white24),
-          const Text(
-            "Pembangunan huntap pascabencana",
-            style: TextStyle(color: Colors.cyanAccent, fontSize: 12),
+          Text(
+            project['nama'] ?? "Nama Pekerjaan",
+            style: const TextStyle(color: Colors.cyanAccent, fontSize: 12),
           ),
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text("Nominal:", style: TextStyle(color: Colors.white70, fontSize: 11)),
-              Text("Rp 524.000.000", style: TextStyle(color: Colors.white, fontSize: 11)),
+              Text("Rp ${project['nominal']}", style: const TextStyle(color: Colors.white, fontSize: 11)),
             ],
           ),
           const SizedBox(height: 15),
           Row(
             children: [
-              _popupBtn("Detail"),
+              _popupBtn("Detail", () {
+                setState(() {
+                  _selectedProjectDetail = project;
+                  _isShowProjectDetailPanel = true;
+                  //_popupLayerController.hideAllPopups(); // Close the small popup
+                });
+              }),
               const SizedBox(width: 5),
-              _popupBtn("Peta"),
+              _popupBtn("Peta", () {}),
               const SizedBox(width: 5),
-              _popupBtn("Streetview"),
+              _popupBtn("Streetview", () {}),
             ],
           )
         ],
@@ -301,16 +329,19 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  Widget _popupBtn(String label) {
+  Widget _popupBtn(String label, VoidCallback onTap) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF22467A),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Center(
-          child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 10)),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF22467A),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Center(
+            child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 10)),
+          ),
         ),
       ),
     );
@@ -429,14 +460,17 @@ class _MyHomePageState extends State<MyHomePage> {
                   markerImage = 'help-yellow.png';
               }
 
+              // Inside _fetchPekerjaanSummary, update how markers are added:
               newMarkers.add(
                 Marker(
                   point: LatLng(lat, lng),
                   width: 40,
                   height: 40,
+                  // Add a key or store the data in the marker for the popup to read
+                  key: ValueKey(project), 
                   child: Image.asset(
                     'assets/images/$markerImage',
-                    fit: BoxFit.contain, // Use BoxFit instead of CrossAxisAlignment
+                    fit: BoxFit.contain,
                   ),
                 ),
               );
@@ -535,6 +569,57 @@ class _MyHomePageState extends State<MyHomePage> {
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  Widget _buildDataRow(String label, dynamic value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 150, child: Text(label, style: const TextStyle(color: Colors.white70))),
+          const Text(":  ", style: TextStyle(color: Colors.white70)),
+          Expanded(child: Text(value?.toString() ?? "-", style: const TextStyle(color: Colors.white))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebarItem(String title, {bool isActive = false}) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+      decoration: BoxDecoration(
+        // Highlight the active tab with the brand blue or a dark wood tone
+        color: isActive ? const Color(0xFF22467A) : Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        children: [
+          // Small indicator dot for active items
+          if (isActive)
+            Container(
+              width: 4,
+              height: 4,
+              decoration: const BoxDecoration(
+                color: Colors.cyanAccent,
+                shape: BoxShape.circle,
+              ),
+            ),
+          if (isActive) const SizedBox(width: 10),
+          
+          Text(
+            title,
+            style: TextStyle(
+              color: isActive ? Colors.white : Colors.white60,
+              fontSize: 13,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1311,6 +1396,255 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
             ),
+
+            if (_isShowProjectDetailPanel && _selectedProjectDetail != null)
+              Positioned(
+                top: 20,
+                right: 40,
+                bottom: 20,
+                child: Container(
+                  width: 700, // Large panel width as shown in image
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1208).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Row(
+                    children: [
+                      // Left Sidebar (Navigation)
+                      Container(
+                        width: 180,
+                        padding: const EdgeInsets.all(15),
+                        color: Colors.black26,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_selectedProjectDetail!['nama'] ?? '-', 
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 20),
+                            _buildSidebarItem("Informasi", isActive: true),
+                            _buildSidebarItem("Penyedia"),
+                            _buildSidebarItem("Rincian"),
+                            // Add other menu items...
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // --- STICKY HEADER (Does not scroll) ---
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text("Informasi Paket Pekerjaan",
+                                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                  IconButton(
+                                    icon: const Icon(Icons.close, color: Colors.white),
+                                    onPressed: () => setState(() => _isShowProjectDetailPanel = false),
+                                  )
+                                ],
+                              ),
+                              const Divider(color: Colors.white24),
+
+                              // --- SCROLLABLE CONTENT ---
+                              Expanded(
+                                child: Theme(
+                                  data: Theme.of(context).copyWith(
+                                    scrollbarTheme: ScrollbarThemeData(
+                                      thumbColor: WidgetStateProperty.all(Colors.white.withOpacity(0.5)),
+                                      trackColor: WidgetStateProperty.all(Colors.white10),
+                                      interactive: true,
+                                    ),
+                                  ),
+                                  child: Scrollbar(
+                                    thumbVisibility: true,
+                                    thickness: 6.0,
+                                    radius: const Radius.circular(10),
+                                    child: SingleChildScrollView(
+                                      physics: const BouncingScrollPhysics(),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          _buildDataRow("Tahun Anggaran", _selectedProjectDetail?['tahun_anggaran'] ?? '-'),
+                                          _buildDataRow("Nama Paket", _selectedProjectDetail?['nama'] ?? '-'),
+                                          _buildDataRow("Program", _selectedProjectDetail?['nama_program'] ?? '-'),
+                                          _buildDataRow("Kegiatan / Sub", _selectedProjectDetail?['nama_kegiatan'] ?? '-'),
+                                          _buildDataRow("Kategori", _selectedProjectDetail?['kategori_paket_pekerjaan']?['nama'] ?? '-'),
+                                          _buildDataRow("Indikator", _selectedProjectDetail?['indikator']?['nama'] ?? '-'),
+                                          _buildDataRow("Wilayah", _selectedProjectDetail?['wilayah']?['nama'] ?? '-'),
+                                          _buildDataRow("Koordinat", "${_selectedProjectDetail?['latitude'] ?? '0'}, ${_selectedProjectDetail?['longitude'] ?? '0'}"),
+                                          
+                                          const SizedBox(height: 20),
+                                          const Text("Informasi Pengadaan",
+                                              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                          const Divider(color: Colors.white24),
+                                          
+                                          _buildDataRow("Nilai pagu", _selectedProjectDetail?['nilai_pagu'] ?? '0'),
+                                          _buildDataRow("Nilai kontrak", _selectedProjectDetail?['nilai_kontrak'] ?? '0'),
+                                          _buildDataRow("Nama rekening", _selectedProjectDetail?['nama_rekening'] ?? '-'),
+                                          _buildDataRow("Nama penyedia", _selectedProjectDetail?['penyedia'] ?? '-'),
+                                          _buildDataRow("No. Kontrak", _selectedProjectDetail?['no_kontrak'] ?? '-'),
+                                          _buildDataRow("Masa pelaksanaan", '${_selectedProjectDetail?['tgl_awal_kontrak'] ?? ""} s/d ${_selectedProjectDetail?['tgl_akhir_kontrak'] ?? ""}'),
+                                          _buildDataRow("Keterangan", _selectedProjectDetail?['keterangan'] ?? '-'),
+                                          const SizedBox(height: 20), // Extra space at bottom
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+              ),
+
+            if (_isShowTkdPanel)
+              Positioned(
+                top: 10,
+                right: 40,
+                bottom: 20,
+                child: Container(
+                  width: 700,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF211505).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white12),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black.withOpacity(0.5),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4)),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              "Analisa Penyaluran Transfer Ke Daerah (TKD ) PROV dan Kabupaten/Kota Terdampak Bencana Sumatera dan Aceh",
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () =>
+                                setState(() => _isShowTkdPanel = false),
+                            icon: const Icon(Icons.close,
+                                color: Colors.white60, size: 20),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildPanelDropdown(
+                              hint: "Prop :",
+                              value: _selectedOptionProv,
+                              items: _optionProvinces,
+                              onChanged: (String? newId) {
+                                setState(() {
+                                  _selectedOptionProv = newId;
+                                });
+                                
+                                _currentLevel = 1;
+                                _selectedOptionKabupaten = '';
+                                _selectedOptionKecamatan = '';
+                                if (newId != null && newId != 'All') {
+                                  _selectedProvinceId = newId;
+                                  _loadWilayahPanelData(newId, '');
+                                } else {
+                                  _selectedProvinceId = null;
+                                  _currentMarkers = [];
+                                  _loadInitialData();
+                                  //_mapController.move(const LatLng(1.5000, 99.0000), 7.0);
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Container(
+                              height: 35,
+                              color: Colors.white10,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text("$_selectedOptionKabupaten", style: TextStyle(color: Colors.white, fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Container(
+                              height: 35,
+                              color: Colors.white10,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text("$_selectedOptionKecamatan", style: TextStyle(color: Colors.white, fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.white10),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Column(
+                            children: [
+                              // Table Header
+                              Container(
+                                color: Colors.white.withOpacity(0.05),
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                                child: const Row(
+                                  children: [
+                                    Expanded(flex: 1, child: Text("No", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                    Expanded(flex: 2, child: Text("Pemerintah daerah", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                    Expanded(flex: 2, child: Text("TKD 2026", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                    Expanded(flex: 2, child: Text("Penyesuaian TKD 2026", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                    Expanded(flex: 2, child: Text("Total TKD 2026 setelah penyesuaian", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                  ],
+                                ),
+                              ),
+                              //Expanded(
+                              //  child: SingleChildScrollView(
+                              //    child: Column(
+                              //      children: List.generate(10, (index) => _buildTableRow(index + 1)),
+                              //    ),
+                              //  ),
+                              //),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
         ],
       ),
     );
