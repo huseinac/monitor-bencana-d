@@ -9,7 +9,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http_cache_hive_store/http_cache_hive_store.dart';
 import 'package:http/http.dart' as http;
 import 'mapdata/map_data.dart';
-import 'package:flutter_map_marker_popup/flutter_map_marker_popup.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -251,68 +250,6 @@ class _MyHomePageState extends State<MyHomePage> {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Text("$label: ${value ?? '-'}", 
         style: const TextStyle(color: Colors.white70, fontSize: 11)),
-    );
-  }
-
-  final PopupController _popupLayerController = PopupController();
-
-  Widget _buildMarkerPopup(Marker marker) {
-    return Container(
-      width: 300,
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: const [BoxShadow(blurRadius: 10, color: Colors.black54)],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "Aceh - Kab. Bireuen", // Use dynamic data here
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-          ),
-          const Divider(color: Colors.white24),
-          const Text(
-            "Pembangunan huntap pascabencana",
-            style: TextStyle(color: Colors.cyanAccent, fontSize: 12),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("Nominal:", style: TextStyle(color: Colors.white70, fontSize: 11)),
-              Text("Rp 524.000.000", style: TextStyle(color: Colors.white, fontSize: 11)),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Row(
-            children: [
-              _popupBtn("Detail"),
-              const SizedBox(width: 5),
-              _popupBtn("Peta"),
-              const SizedBox(width: 5),
-              _popupBtn("Streetview"),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _popupBtn(String label) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF22467A),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Center(
-          child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 10)),
-        ),
-      ),
     );
   }
 
@@ -994,20 +931,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           
                         ..._pekerjaanMarkers, // Spread the API markers
                       ],
-                    ),
-                    PopupMarkerLayer(
-                      options: PopupMarkerLayerOptions(
-                        popupController: _popupLayerController,
-                        markers: _pekerjaanMarkers, // Your existing list of markers
-                        popupDisplayOptions: PopupDisplayOptions(
-                          builder: (BuildContext context, Marker marker) {
-                            // Find the project data associated with this marker
-                            // You might need to store project data inside the Marker's 'key' or a Map
-                            return _buildMarkerPopup(marker);
-                          },
-                        ),
-                      ),
-                    ),
+                    )
                   ],
                 ),
               ),
