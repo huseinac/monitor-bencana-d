@@ -105,22 +105,327 @@ class _MyHomePageState extends State<MyHomePage> {
   final ScrollController _pekerjaanScrollController = ScrollController();
   int _selectedPekerjaanIndex = 0;
 
-  //Widget _buildTableRow(int index) {
-  //  return Container(
-  //    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-  //    decoration: const BoxDecoration(
-  //      border: Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
-  //    ),
-  //    child: Row(
-  //      children: [
-  //        Expanded(flex: 1, child: Text("$index", style: const TextStyle(color: Colors.white, fontSize: 11))),
-  //        const Expanded(flex: 4, child: Text("Kab. Bireuen", style: TextStyle(color: Colors.white, fontSize: 11))),
-  //        const Expanded(flex: 3, child: Text("Rp 12.500.000", style: TextStyle(color: Colors.cyanAccent, fontSize: 11))),
-  //        const Expanded(flex: 2, child: Text("85%", style: TextStyle(color: Colors.white, fontSize: 11))),
-  //      ],
-  //    ),
-  //  );
-  //}
+  // Letakkan di dekat deklarasi _pekerjaanMarkers atau _currentMarkers
+  List<dynamic> _indikatorData = [];
+  List<Marker> _updatedIndikatorMarkers = [];
+
+  Future<void> _fetchIndikatorData() async {
+    setState(() => _isLoading = true);
+
+    // Jika _selectedProvinceId bernilai null atau kosong, parameter wilayah_kode akan dikirim kosong ""
+    String kodeWilayah = _selectedProvinceId ?? "";
+    //String url = 'https://geopas.satgasprr.go.id/map/get_indikator?wilayah_kode=$kodeWilayah';
+    String url = 'https://geopas.satgasprr.go.id/map/get_indikator?wilayah_kode=11.02.07';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> decodedData = json.decode(response.body);
+        final List<dynamic> listIndikator = decodedData['list_indikator'] ?? [];
+        List<Marker> newMarkers = [];
+        int markerCount = 0;
+
+        outerLoop:
+        for (var indikator in listIndikator) {
+          List<dynamic> listSektor = indikator['list_sektor_terdampak'] ?? [];
+          
+          for (var sektor in listSektor) {
+            if (markerCount >= 40) {
+              break outerLoop; 
+            }
+            double? lat = double.tryParse(sektor['latitude']?.toString() ?? '');
+            double? lng = double.tryParse(sektor['longitude']?.toString() ?? '');
+
+            if (lat != null && lng != null) {
+              String markerImage = '';
+              if (sektor['indikator']['nama'].contains('Kantor')) {
+                  markerImage = 'building';
+              } else if (sektor['indikator']['nama'].contains('Faskes')) {
+                  markerImage = 'health';
+              } else if (
+                  sektor['indikator']['nama'].contains('PAUD') ||
+                  sektor['indikator']['nama'].contains('TK') ||
+                  sektor['indikator']['nama'].contains('SD') ||
+                  sektor['indikator']['nama'].contains('SMP') ||
+                  sektor['indikator']['nama'].contains('SMA/SMK') ||
+                  sektor['indikator']['nama'].contains('Madrasah/Ponpes')
+                ) {
+                  markerImage = 'school';
+              } else if (sektor['indikator']['nama'].contains('Jalan')) {
+                  markerImage = 'road';
+              } else if (sektor['indikator']['nama'].contains('Jembatan')) {
+                  markerImage = 'bride';
+              } else if (sektor['indikator']['nama'].contains('Kelistrikan')) {
+                  markerImage = 'electric';
+              } else if (sektor['indikator']['nama'].contains('PDAM/SPAM')) {
+                  markerImage = 'water';
+              } else if (sektor['indikator']['nama'].contains('Gedung Rumah Ibadah')) {
+                  markerImage = 'religion';
+              } else if (sektor['indikator']['nama'].contains('Sungai')) {
+                  markerImage = 'river';
+              } else if (
+                  sektor['indikator']['nama'].contains('Huntara') ||
+                  sektor['indikator']['nama'].contains('Huntap')
+                ) {
+                  markerImage = 'home';
+              } else if (sektor['indikator']['nama'].contains('Pengungsian')) {
+                  markerImage = 'homes';
+              } else if (
+                  sektor['indikator']['nama'].contains('toko diluar pasar') ||
+                  sektor['indikator']['nama'].contains('Hotel/Penginapan')
+                ) {
+                  markerImage = 'building';
+              } else if (sektor['indikator']['nama'].contains('SPBU')) {
+                  markerImage = 'gas_station';
+              } else if (sektor['indikator']['nama'].contains('Gas LPG')) {
+                  markerImage = 'gas';
+              } else if (
+                  sektor['indikator']['nama'].contains('Gedung/Sarpras Pasar') ||
+                  sektor['indikator']['nama'].contains('Gedung/Sarpras Resto/Warung/Kafe/kedai') ||
+                  sektor['indikator']['nama'].contains('Koperasi')
+                ) {
+                  markerImage = 'store';
+              } else if (sektor['indikator']['nama'].contains('INTERNET')) {
+                  markerImage = 'help';
+              } else if (
+                  sektor['indikator']['nama'].contains('Persawahan') ||
+                  sektor['indikator']['nama'].contains('Perikanan (Tambak)')
+                ) {
+                  markerImage = 'river';
+              } else if (
+                  sektor['indikator']['nama'].contains('Pembersihan lumpur') ||
+                  sektor['indikator']['nama'].contains('DTH')
+                ) {
+                  markerImage = 'help';
+              }
+
+              switch (sektor['status']) {
+                case 'Atensi':
+                  markerImage += '-yellow';
+                break;
+                case 'Mendekati':
+                  markerImage += '-blue';
+                break;
+                case 'Sedang ditangani':
+                  markerImage += '-blue';
+                break;
+                case 'Belum ditangani':
+                  markerImage += '-red';
+                break;
+                default:
+              }
+
+              markerImage += '.png';
+
+              newMarkers.add(
+                Marker(
+                  point: LatLng(lat, lng),
+                  width: 45,
+                  height: 45,
+                  // CRITICAL: This aligns the popup anchor to the top edge of your icon
+                  alignment: Alignment.topCenter, 
+                  key: ValueKey(sektor), 
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      // Toggle the popup explicitly at this marker's aligned anchor spot
+                      _popupLayerController.togglePopup(newMarkers.last);
+                    },
+                    child: Image.asset(
+                      'assets/images/$markerImage',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(Icons.location_on, color: Colors.red, size: 35);
+                      },
+                    ),
+                  ),
+                ),
+              );
+              markerCount++;
+            }
+          }
+        }
+
+        setState(() {
+          _indikatorData = listIndikator;
+          _updatedIndikatorMarkers = newMarkers;
+        });
+      } else {
+        _showErrorSnippet("Gagal memuat data indikator (Status: ${response.statusCode})");
+      }
+    } catch (e) {
+      debugPrint("Indikator fetch error: $e");
+      _showErrorSnippet("Terjadi kesalahan saat mengambil data indikator.");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Widget _buildIndikatorPopup(Marker marker) {
+    // Extract the JSON object stored in the marker's key
+    final sektor = (marker.key as ValueKey).value as Map<String, dynamic>;
+
+    // Safely extract string data fields with fallbacks
+    String namaSektor = sektor['nama_lokasi'] ?? 'Tanpa Nama';
+    String namaIndikator = (sektor['indikator']?['nama'] ?? 'Indikator') + ' Terdampak Bencana';
+    
+    // Combine location hierarchy strings safely
+    String wilayahInfo = 
+    [
+      sektor['wilayah']['parent']['parent']['nama'] ?? '',
+      sektor['wilayah']['parent']['nama'] ?? '',
+      sektor['wilayah']['nama'] ?? ''
+    ].where((element) => element.isNotEmpty).join(' - ');
+    
+    if (wilayahInfo.isEmpty) {
+      wilayahInfo = sektor['wilayah']?['nama'] ?? '-';
+    }
+
+    String kondisi = sektor['kondisi'] ?? '-';
+    String status = sektor['status'] ?? '-';
+    String kondisiAwal = sektor['kondisi_awal'] ?? '-';
+    String keterangan = sektor['keterangan'] ?? '-';
+
+    // Parse recovery percentage safely (handles ints, doubles, or numeric strings)
+    double persentasePulih = 0.0;
+    var rawPersentase = sektor['persentase'];
+    if (rawPersentase != null) {
+      persentasePulih = double.tryParse(rawPersentase.toString()) ?? 0.0;
+    }
+
+    return Container(
+      width: 320,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A), // Dark panel theme matching your screenshot
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(blurRadius: 12, color: Colors.black, offset: Offset(0, 4))
+        ],
+      ),
+      child: Stack(
+        children: [
+          // Main Content Layer
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title block
+                Text(
+                  namaSektor.toUpperCase(),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 12),
+                const Divider(color: Colors.white24, height: 1),
+                const SizedBox(height: 12),
+
+                // Progress Bar Area
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("Persentase Pulih:", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text(
+                      "${persentasePulih.toStringAsFixed(0)}%",
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: persentasePulih / 100,
+                    backgroundColor: Colors.white10,
+                    color: const Color(0xFF4CAF50), // Green shade matching your recovery design
+                    minHeight: 8,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Indicator Category Sub-Card
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.school, color: Colors.tealAccent, size: 20), // Placeholder category icon
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          namaIndikator,
+                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Split Status Sub-Card (Belum Dilaporkan components)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                      Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2), size: 16),
+                      const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Bottom Metadata Key-Value List
+                _buildMetaRow("Wilayah", wilayahInfo),
+                _buildMetaRow("Kondisi", kondisi),
+                _buildMetaRow("Status", status),
+                _buildMetaRow("Kondisi Awal", kondisiAwal),
+                _buildMetaRow("Keterangan", keterangan),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 4, 
+            right: 4,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+              tooltip: 'Tutup',
+              onPressed: () {
+                // Triggers the package controller to hide open popups instantly
+                _popupLayerController.hideAllPopups();
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Reusable styling layout helper for the textual descriptive list
+  Widget _buildMetaRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("$label :", style: const TextStyle(color: Colors.white60, fontSize: 11)),
+          const SizedBox(height: 2),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
 
   Widget _buildPekerjaanHeader() {
     return Padding(
@@ -500,7 +805,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
       String auth = 'Basic ${base64Encode(utf8.encode('aingExcel:machinegunkelly'))}';
       final response = await http.get(
-        Uri.parse('http://localhost:8000/api/excel/wilayah/${_currentLevel == 4 ? 3 : _currentLevel}/$parentCode'),
+        Uri.parse('https://geopas.satgasprr.go.id:8000/api/excel/wilayah/${_currentLevel == 4 ? 3 : _currentLevel}/$parentCode'),
         headers: {'Authorization': auth},
       );
 
@@ -800,7 +1105,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     try {
       final response = await http.get(
-        Uri.parse('http://localhost:8000/api/excel/wilayah/${level == 4 ? 3 : level}/$parentCode'),
+        Uri.parse('https://geopas.satgasprr.go.id/api/excel/wilayah/${level == 4 ? 3 : level}/$parentCode'),
         headers: {'Authorization': auth},
       );
 
@@ -1078,17 +1383,49 @@ class _MyHomePageState extends State<MyHomePage> {
                           ..._currentMarkers, // Spread the list of current markers
                           
                         ..._pekerjaanMarkers, // Spread the API markers
+                        ..._updatedIndikatorMarkers,
                       ],
                     ),
+                    //PopupMarkerLayer(
+                    //  options: PopupMarkerLayerOptions(
+                    //    popupController: _popupLayerController,
+                    //    markers: _pekerjaanMarkers, // Your existing list of markers
+                    //    popupDisplayOptions: PopupDisplayOptions(
+                    //      builder: (BuildContext context, Marker marker) {
+                    //        //return _buildMarkerPopup(marker);
+                    //        final dataPayload = (marker.key as ValueKey).value as Map<String, dynamic>;
+
+                    //        // Check unique structural fields to determine dataset type
+                    //        if (dataPayload.containsKey('list_sektor_terdampak') || dataPayload.containsKey('indikator')) {
+                    //          // It's an Indicator Marker!
+                    //          return _buildIndikatorPopup(marker);
+                    //        } else {
+                    //          // It's a DalRenduk Project Job Marker!
+                    //          return _buildMarkerPopup(marker);
+                    //        }
+                    //      },
+                    //    ),
+                    //  ),
+                    //),
                     PopupMarkerLayer(
                       options: PopupMarkerLayerOptions(
                         popupController: _popupLayerController,
-                        markers: _pekerjaanMarkers, // Your existing list of markers
+                        markers: [
+                          ..._pekerjaanMarkers,
+                          ..._updatedIndikatorMarkers,
+                        ],
                         popupDisplayOptions: PopupDisplayOptions(
+                          // This tells the engine to snap the bottom-center of the popup to the top-center of the marker
+                          snap: PopupSnap.markerTop, 
                           builder: (BuildContext context, Marker marker) {
-                            // Find the project data associated with this marker
-                            // You might need to store project data inside the Marker's 'key' or a Map
-                            return _buildMarkerPopup(marker);
+                            final dataPayload = (marker.key as ValueKey).value as Map<String, dynamic>;
+                            
+                            // Dynamic payload checking to determine which layout to draw
+                            if (dataPayload.containsKey('list_sektor_terdampak') || dataPayload.containsKey('indikator')) {
+                              return _buildIndikatorPopup(marker);
+                            } else {
+                              return _buildMarkerPopup(marker);
+                            }
                           },
                         ),
                       ),
@@ -1119,10 +1456,20 @@ class _MyHomePageState extends State<MyHomePage> {
                       }),
                     ),
                     const SizedBox(height: 16),
+                    //_buildSidebarButton(
+                    //  imagePath: 'assets/images/indikator.png',
+                    //  label: "Update kondisi (Indikator)",
+                    //  onTap: () => setState(() => _showMonitorButton = 'update'),
+                    //),
                     _buildSidebarButton(
                       imagePath: 'assets/images/indikator.png',
                       label: "Update kondisi (Indikator)",
-                      onTap: () => setState(() => _showMonitorButton = 'update'),
+                      onTap: () {
+                        setState(() {
+                          _showMonitorButton = 'update';
+                        });
+                        _fetchIndikatorData(); // Memanggil fungsi fetch API saat tombol diklik
+                      },
                     ),
                     const SizedBox(height: 16),
                     _buildSidebarButton(

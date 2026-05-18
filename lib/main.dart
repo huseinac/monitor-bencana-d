@@ -101,26 +101,425 @@ class _MyHomePageState extends State<MyHomePage> {
   int _panelWilayahCounterMendekati = 0;
   int _panelWilayahCounterAtensi = 0;
 
-  // Controller to fix the "No ScrollPosition attached" error from your screenshot
   final ScrollController _pekerjaanScrollController = ScrollController();
   int _selectedPekerjaanIndex = 0;
 
-  //Widget _buildTableRow(int index) {
-  //  return Container(
-  //    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-  //    decoration: const BoxDecoration(
-  //      border: Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
-  //    ),
-  //    child: Row(
-  //      children: [
-  //        Expanded(flex: 1, child: Text("$index", style: const TextStyle(color: Colors.white, fontSize: 11))),
-  //        const Expanded(flex: 4, child: Text("Kab. Bireuen", style: TextStyle(color: Colors.white, fontSize: 11))),
-  //        const Expanded(flex: 3, child: Text("Rp 12.500.000", style: TextStyle(color: Colors.cyanAccent, fontSize: 11))),
-  //        const Expanded(flex: 2, child: Text("85%", style: TextStyle(color: Colors.white, fontSize: 11))),
-  //      ],
-  //    ),
-  //  );
-  //}
+  List<dynamic> _indikatorData = [];
+  List<Marker> _updatedIndikatorMarkers = [];
+
+  Future<void> _fetchIndikatorData() async {
+    setState(() => _isLoading = true);
+
+    String kodeWilayah = _selectedProvinceId ?? "";
+    String url = 'https://geopas.satgasprr.go.id/map/get_indikator?wilayah_kode=$kodeWilayah';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> decodedData = json.decode(response.body);
+        debugPrint(decodedData.toString());
+        final List<dynamic> listIndikator = decodedData['list_indikator'] ?? [];
+        List<Marker> newMarkers = [];
+        int markerCount = 0;
+        List<dynamic> flatSektorList = [];
+
+        outerLoop:
+        for (var indikator in listIndikator) {
+          List<dynamic> listSektor = indikator['list_sektor_terdampak'] ?? [];
+          
+          for (var sektor in listSektor) {
+            if (markerCount >= 40) {
+              break outerLoop; 
+            }
+            double? lat = double.tryParse(sektor['latitude']?.toString() ?? '');
+            double? lng = double.tryParse(sektor['longitude']?.toString() ?? '');
+
+            if (lat != null && lng != null) {
+              String markerImage = '';
+              if (sektor['indikator']['nama'].contains('Kantor')) {
+                  markerImage = 'building';
+              } else if (sektor['indikator']['nama'].contains('Faskes')) {
+                  markerImage = 'health';
+              } else if (
+                  sektor['indikator']['nama'].contains('PAUD') ||
+                  sektor['indikator']['nama'].contains('TK') ||
+                  sektor['indikator']['nama'].contains('SD') ||
+                  sektor['indikator']['nama'].contains('SMP') ||
+                  sektor['indikator']['nama'].contains('SMA/SMK') ||
+                  sektor['indikator']['nama'].contains('Madrasah/Ponpes')
+                ) {
+                  markerImage = 'school';
+              } else if (sektor['indikator']['nama'].contains('Jalan')) {
+                  markerImage = 'road';
+              } else if (sektor['indikator']['nama'].contains('Jembatan')) {
+                  markerImage = 'bride';
+              } else if (sektor['indikator']['nama'].contains('Kelistrikan')) {
+                  markerImage = 'electric';
+              } else if (sektor['indikator']['nama'].contains('PDAM/SPAM')) {
+                  markerImage = 'water';
+              } else if (sektor['indikator']['nama'].contains('Gedung Rumah Ibadah')) {
+                  markerImage = 'religion';
+              } else if (sektor['indikator']['nama'].contains('Sungai')) {
+                  markerImage = 'river';
+              } else if (
+                  sektor['indikator']['nama'].contains('Huntara') ||
+                  sektor['indikator']['nama'].contains('Huntap')
+                ) {
+                  markerImage = 'home';
+              } else if (sektor['indikator']['nama'].contains('Pengungsian')) {
+                  markerImage = 'homes';
+              } else if (
+                  sektor['indikator']['nama'].contains('toko diluar pasar') ||
+                  sektor['indikator']['nama'].contains('Hotel/Penginapan')
+                ) {
+                  markerImage = 'building';
+              } else if (sektor['indikator']['nama'].contains('SPBU')) {
+                  markerImage = 'gas_station';
+              } else if (sektor['indikator']['nama'].contains('Gas LPG')) {
+                  markerImage = 'gas';
+              } else if (
+                  sektor['indikator']['nama'].contains('Gedung/Sarpras Pasar') ||
+                  sektor['indikator']['nama'].contains('Gedung/Sarpras Resto/Warung/Kafe/kedai') ||
+                  sektor['indikator']['nama'].contains('Koperasi')
+                ) {
+                  markerImage = 'store';
+              } else if (sektor['indikator']['nama'].contains('INTERNET')) {
+                  markerImage = 'help';
+              } else if (
+                  sektor['indikator']['nama'].contains('Persawahan') ||
+                  sektor['indikator']['nama'].contains('Perikanan (Tambak)')
+                ) {
+                  markerImage = 'river';
+              } else if (
+                  sektor['indikator']['nama'].contains('Pembersihan lumpur') ||
+                  sektor['indikator']['nama'].contains('DTH')
+                ) {
+                  markerImage = 'help';
+              }
+
+              switch (sektor['status']) {
+                case 'Atensi':
+                  markerImage += '-yellow';
+                break;
+                case 'Mendekati':
+                  markerImage += '-blue';
+                break;
+                case 'Sedang ditangani':
+                  markerImage += '-blue';
+                break;
+                case 'Belum ditangani':
+                  markerImage += '-red';
+                break;
+                default:
+              }
+
+              markerImage += '.png';
+
+              late final Marker uniqueMarker;
+                
+              uniqueMarker = Marker(
+                point: LatLng(lat, lng),
+                width: 45,
+                height: 45,
+                alignment: Alignment.topCenter,
+                key: ValueKey(sektor),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    _popupLayerController.togglePopup(uniqueMarker);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(4), 
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1A), 
+                      shape: BoxShape.circle,         
+                      border: Border.all(
+                        color: Colors.white,          
+                        width: 2.0,                   
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black45,
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Image.asset(
+                      'assets/images/$markerImage',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(Icons.location_on, color: Colors.red, size: 35);
+                      },
+                    ),
+                  ),
+                ),
+              );
+
+              newMarkers.add(uniqueMarker);
+
+              flatSektorList.add(sektor);
+              markerCount++;
+            }
+          }
+        }
+
+        setState(() {
+          _indikatorData = flatSektorList;
+          _updatedIndikatorMarkers = newMarkers;
+        });
+      } else {
+        _showErrorSnippet("Gagal memuat data indikator (Status: ${response.statusCode})");
+      }
+    } catch (e) {
+      debugPrint("Indikator fetch error: $e");
+      _showErrorSnippet("Terjadi kesalahan saat mengambil data indikator.");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Widget _buildIndikatorPopup(Marker marker) {
+    final sektor = (marker.key as ValueKey).value as Map<String, dynamic>;
+
+    String namaSektor = sektor['nama_lokasi'] ?? 'Tanpa Nama';
+    String namaIndikator = (sektor['indikator']?['nama'] ?? 'Indikator') + ' Terdampak Bencana';
+    
+    String wilayahInfo = 
+    [
+      sektor['wilayah']['parent']['parent']['nama'] ?? '',
+      sektor['wilayah']['parent']['nama'] ?? '',
+      sektor['wilayah']['nama'] ?? ''
+    ].where((element) => element.isNotEmpty).join(' - ');
+    
+    if (wilayahInfo.isEmpty) {
+      wilayahInfo = sektor['wilayah']?['nama'] ?? '-';
+    }
+
+    String kondisi = sektor['kondisi'] ?? '-';
+    String status = sektor['status'] ?? '-';
+    String kondisiAwal = sektor['kondisi_awal'] ?? '-';
+    String keterangan = sektor['keterangan'] ?? '-';
+
+    double persentasePulih = 0.0;
+    var rawPersentase = sektor['persentase'];
+    if (rawPersentase != null) {
+      persentasePulih = double.tryParse(rawPersentase.toString()) ?? 0.0;
+    }
+
+    String markerImage = '';
+    if (sektor['indikator']['nama'].contains('Kantor')) {
+        markerImage = 'building';
+    } else if (sektor['indikator']['nama'].contains('Faskes')) {
+        markerImage = 'health';
+    } else if (
+        sektor['indikator']['nama'].contains('PAUD') ||
+        sektor['indikator']['nama'].contains('TK') ||
+        sektor['indikator']['nama'].contains('SD') ||
+        sektor['indikator']['nama'].contains('SMP') ||
+        sektor['indikator']['nama'].contains('SMA/SMK') ||
+        sektor['indikator']['nama'].contains('Madrasah/Ponpes')
+      ) {
+        markerImage = 'school';
+    } else if (sektor['indikator']['nama'].contains('Jalan')) {
+        markerImage = 'road';
+    } else if (sektor['indikator']['nama'].contains('Jembatan')) {
+        markerImage = 'bride';
+    } else if (sektor['indikator']['nama'].contains('Kelistrikan')) {
+        markerImage = 'electric';
+    } else if (sektor['indikator']['nama'].contains('PDAM/SPAM')) {
+        markerImage = 'water';
+    } else if (sektor['indikator']['nama'].contains('Gedung Rumah Ibadah')) {
+        markerImage = 'religion';
+    } else if (sektor['indikator']['nama'].contains('Sungai')) {
+        markerImage = 'river';
+    } else if (
+        sektor['indikator']['nama'].contains('Huntara') ||
+        sektor['indikator']['nama'].contains('Huntap')
+      ) {
+        markerImage = 'home';
+    } else if (sektor['indikator']['nama'].contains('Pengungsian')) {
+        markerImage = 'homes';
+    } else if (
+        sektor['indikator']['nama'].contains('toko diluar pasar') ||
+        sektor['indikator']['nama'].contains('Hotel/Penginapan')
+      ) {
+        markerImage = 'building';
+    } else if (sektor['indikator']['nama'].contains('SPBU')) {
+        markerImage = 'gas_station';
+    } else if (sektor['indikator']['nama'].contains('Gas LPG')) {
+        markerImage = 'gas';
+    } else if (
+        sektor['indikator']['nama'].contains('Gedung/Sarpras Pasar') ||
+        sektor['indikator']['nama'].contains('Gedung/Sarpras Resto/Warung/Kafe/kedai') ||
+        sektor['indikator']['nama'].contains('Koperasi')
+      ) {
+        markerImage = 'store';
+    } else if (sektor['indikator']['nama'].contains('INTERNET')) {
+        markerImage = 'help';
+    } else if (
+        sektor['indikator']['nama'].contains('Persawahan') ||
+        sektor['indikator']['nama'].contains('Perikanan (Tambak)')
+      ) {
+        markerImage = 'river';
+    } else if (
+        sektor['indikator']['nama'].contains('Pembersihan lumpur') ||
+        sektor['indikator']['nama'].contains('DTH')
+      ) {
+        markerImage = 'help';
+    }
+
+    switch (sektor['status']) {
+      case 'Atensi':
+        markerImage += '-yellow';
+      break;
+      case 'Mendekati':
+        markerImage += '-blue';
+      break;
+      case 'Sedang ditangani':
+        markerImage += '-blue';
+      break;
+      case 'Belum ditangani':
+        markerImage += '-red';
+      break;
+      default:
+    }
+
+    markerImage += '.png';
+
+    return Container(
+      width: 320,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(blurRadius: 12, color: Colors.black, offset: Offset(0, 4))
+        ],
+      ),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  namaSektor.toUpperCase(),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 12),
+                const Divider(color: Colors.white24, height: 1),
+                const SizedBox(height: 12),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("Persentase Pulih:", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text(
+                      "${persentasePulih.toStringAsFixed(0)}%",
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: persentasePulih / 100,
+                    backgroundColor: Colors.white10,
+                    color: const Color(0xFF4CAF50),
+                    minHeight: 8,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Image.asset(
+                        'assets/images/$markerImage',
+                        width: 20,
+                        height: 20,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(Icons.assignment, color: Colors.tealAccent, size: 20);
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          namaIndikator,
+                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                      Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2), size: 16),
+                      const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                _buildMetaRow("Wilayah", wilayahInfo),
+                _buildMetaRow("Kondisi", kondisi),
+                _buildMetaRow("Status", status),
+                _buildMetaRow("Kondisi Awal", kondisiAwal),
+                _buildMetaRow("Keterangan", keterangan),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 4, 
+            right: 4,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+              tooltip: 'Tutup',
+              onPressed: () {
+                _popupLayerController.hideAllPopups();
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetaRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("$label :", style: const TextStyle(color: Colors.white60, fontSize: 11)),
+          const SizedBox(height: 2),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
 
   Widget _buildPekerjaanHeader() {
     return Padding(
@@ -151,8 +550,6 @@ class _MyHomePageState extends State<MyHomePage> {
                 _fetchWilayahData(2, v.toString());
                 _fetchPekerjaanSummary(v.toString());
               }))),
-              //const SizedBox(width: 10),
-              //Expanded(child: _buildPanelDropdown(hint: "Kec :", value: null, items: {'0': 'Semua'}, onChanged: (v) {})),
             ],
           ),
           const SizedBox(height: 10),
@@ -262,7 +659,6 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  // Helper untuk baris detail
   Widget _buildDetailRow(String label, dynamic value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -276,7 +672,6 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isShowProjectDetailPanel = false;
 
   Widget _buildMarkerPopup(Marker marker) {
-    // Extract the project data we stored in the Key
     final project = (marker.key as ValueKey).value as Map<String, dynamic>;
 
     return Container(
@@ -315,7 +710,6 @@ class _MyHomePageState extends State<MyHomePage> {
                 setState(() {
                   _selectedProjectDetail = project;
                   _isShowProjectDetailPanel = true;
-                  //_popupLayerController.hideAllPopups(); // Close the small popup
                 });
               }),
               const SizedBox(width: 5),
@@ -347,7 +741,6 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  // Ubah dari List<Map<String, dynamic>> menjadi List<dynamic>
   List<dynamic> _pekerjaanData = [];
   List<Marker> _pekerjaanMarkers = [];
 
@@ -372,10 +765,8 @@ class _MyHomePageState extends State<MyHomePage> {
             double? lng = double.tryParse(project['longitude']?.toString() ?? '');
 
             if (lat != null && lng != null) {
-              // 1. Get the category ID from the JSON
               int categoryId = project['kategori_paket_pekerjaan_id'] ?? 0;
 
-              // 2. Determine the image path based on the ID
               String markerImage;
               switch (categoryId) {
                 case 1:
@@ -460,13 +851,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   markerImage = 'help-yellow.png';
               }
 
-              // Inside _fetchPekerjaanSummary, update how markers are added:
               newMarkers.add(
                 Marker(
                   point: LatLng(lat, lng),
                   width: 40,
                   height: 40,
-                  // Add a key or store the data in the marker for the popup to read
                   key: ValueKey(project), 
                   child: Image.asset(
                     'assets/images/$markerImage',
@@ -507,13 +896,11 @@ class _MyHomePageState extends State<MyHomePage> {
       if (response.statusCode == 200) {
         List<dynamic> areas = json.decode(response.body);
         setState(() {
-          // 1. Clear old data so previous regencies don't stick around
           _panelWilayahOptionalData.clear();
           _panelWilayahCounterNormal = 0;
           _panelWilayahCounterMendekati = 0;
           _panelWilayahCounterAtensi = 0;
           
-          // 2. Add 'All' option if needed, similar to your provinces
           _panelWilayahOptionalData.add({
             'kode': '0',
             'nama': 'All',
@@ -548,7 +935,6 @@ class _MyHomePageState extends State<MyHomePage> {
           break;
 
           case 4:
-            debugPrint('asdasd');
             setState(() {
               _selectedOptionKecamatan = parentName;
             });
@@ -597,7 +983,6 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       child: Row(
         children: [
-          // Small indicator dot for active items
           if (isActive)
             Container(
               width: 4,
@@ -643,8 +1028,6 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  // --- Helper UI Methods ---
-
   Widget _buildSidebarButton({
     required String imagePath,
     required String label,
@@ -680,7 +1063,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget _buildPanelDropdown({
     required String hint,
     required String? value,
-    required Map<String, String> items, // Changed to Map
+    required Map<String, String> items,
     required ValueChanged<String?> onChanged,
   }) {
     return Container(
@@ -701,8 +1084,8 @@ class _MyHomePageState extends State<MyHomePage> {
           // Iterate through Map entries
           items: items.entries.map((entry) {
             return DropdownMenuItem<String>(
-              value: entry.key,   // This is the ID (e.g., '11')
-              child: Text(entry.value), // This is the Label (e.g., 'Aceh')
+              value: entry.key,   
+              child: Text(entry.value), 
             );
           }).toList(),
           onChanged: onChanged,
@@ -768,8 +1151,6 @@ class _MyHomePageState extends State<MyHomePage> {
       )
     );
   }
-
-  // --- Logic Methods ---
 
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
@@ -1006,7 +1387,6 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       body: Stack(
         children: [
-          // 1. The Map Layer (Wrapped in RepaintBoundary)
           Positioned.fill(
             child: RepaintBoundary(
               child: MouseRegion(
@@ -1051,7 +1431,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     MarkerLayer(
                       markers: [
-                        // Use 'if' inside the list combined with the spread operator '...'
                         if (_currentLevel == 1)
                           ...MapData.provinceCenters.entries
                               .map((e) => Marker(
@@ -1075,20 +1454,29 @@ class _MyHomePageState extends State<MyHomePage> {
                                   ))
                               .toList()
                         else
-                          ..._currentMarkers, // Spread the list of current markers
+                          ..._currentMarkers,
                           
-                        ..._pekerjaanMarkers, // Spread the API markers
+                        ..._pekerjaanMarkers,
+                        ..._updatedIndikatorMarkers,
                       ],
                     ),
                     PopupMarkerLayer(
                       options: PopupMarkerLayerOptions(
                         popupController: _popupLayerController,
-                        markers: _pekerjaanMarkers, // Your existing list of markers
+                        markers: [
+                          ..._pekerjaanMarkers,
+                          ..._updatedIndikatorMarkers,
+                        ],
                         popupDisplayOptions: PopupDisplayOptions(
+                          snap: PopupSnap.markerTop, 
                           builder: (BuildContext context, Marker marker) {
-                            // Find the project data associated with this marker
-                            // You might need to store project data inside the Marker's 'key' or a Map
-                            return _buildMarkerPopup(marker);
+                            final dataPayload = (marker.key as ValueKey).value as Map<String, dynamic>;
+                            
+                            if (dataPayload.containsKey('list_sektor_terdampak') || dataPayload.containsKey('indikator')) {
+                              return _buildIndikatorPopup(marker);
+                            } else {
+                              return _buildMarkerPopup(marker);
+                            }
                           },
                         ),
                       ),
@@ -1099,7 +1487,6 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ),
 
-          // 2. Sidebar (Wrapped in RepaintBoundary)
           Positioned(
             top: 0,
             bottom: 0,
@@ -1122,7 +1509,12 @@ class _MyHomePageState extends State<MyHomePage> {
                     _buildSidebarButton(
                       imagePath: 'assets/images/indikator.png',
                       label: "Update kondisi (Indikator)",
-                      onTap: () => setState(() => _showMonitorButton = 'update'),
+                      onTap: () {
+                        setState(() {
+                          _showMonitorButton = 'update';
+                        });
+                        _fetchIndikatorData();
+                      },
                     ),
                     const SizedBox(height: 16),
                     _buildSidebarButton(
@@ -1147,7 +1539,6 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ),
 
-          // 3. Floating "Kembali"
           if (_currentLevel > 1)
             Positioned(
               top: 20,
@@ -1164,7 +1555,6 @@ class _MyHomePageState extends State<MyHomePage> {
           if (_isLoading)
             const Center(child: CircularProgressIndicator(color: Colors.green)),
 
-          // 4. Panel Toggle Buttons
           Positioned(
             top: 10,
             right: 40,
@@ -1198,7 +1588,6 @@ class _MyHomePageState extends State<MyHomePage> {
             )
           ),
 
-          // 5. Monitor Wilayah Panel
           if (_isShowMonitorWilayahPanel)
             Positioned(
               top: 10,
@@ -1318,16 +1707,16 @@ class _MyHomePageState extends State<MyHomePage> {
                       child: Theme(
                         data: Theme.of(context).copyWith(
                           scrollbarTheme: ScrollbarThemeData(
-                            thumbColor: WidgetStateProperty.all(Colors.white.withOpacity(0.5)), // White thumb
-                            trackColor: WidgetStateProperty.all(Colors.white10), // Subtle white track
+                            thumbColor: WidgetStateProperty.all(Colors.white.withOpacity(0.5)),
+                            trackColor: WidgetStateProperty.all(Colors.white10),
                             interactive: true,
                           ),
                         ),
                         child: Scrollbar(
                           controller: _panelScrollController,
-                          thumbVisibility: true, // This makes the scrollbar always visible while scrolling
-                          trackVisibility: true, // Optional: shows the track behind the thumb
-                          thickness: 6.0,        // Adjust the width of the scrollbar
+                          thumbVisibility: true,
+                          trackVisibility: true,
+                          thickness: 6.0,       
                           radius: const Radius.circular(10),
                           child: SingleChildScrollView(
                             controller: _panelScrollController,
@@ -1343,7 +1732,6 @@ class _MyHomePageState extends State<MyHomePage> {
                                     ],
                                   )
                                 else
-                                  // Loop through the Map entries
                                   ..._panelWilayahOptionalData
                                       .where((item) => item['kode'] != '0')
                                       .map((item) {
@@ -1374,20 +1762,15 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
                 child: Column(
                   children: [
-                    // Header Section
                     _buildPekerjaanHeader(),
                     
-                    // Main Content
                     Expanded(
                       child: Row(
                         children: [
-                          // Left: Scrollable List
                           Expanded(flex: 4, child: _buildPekerjaanList()),
                           
-                          // Vertical Divider
                           Container(width: 1, color: Colors.white10),
                           
-                          // Right: Detailed View
                           Expanded(flex: 5, child: _buildPekerjaanDetail()),
                         ],
                       ),
@@ -1403,7 +1786,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 right: 40,
                 bottom: 20,
                 child: Container(
-                  width: 700, // Large panel width as shown in image
+                  width: 700, 
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A1208).withOpacity(0.95),
                     borderRadius: BorderRadius.circular(12),
@@ -1411,7 +1794,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                   child: Row(
                     children: [
-                      // Left Sidebar (Navigation)
+                      
                       Container(
                         width: 180,
                         padding: const EdgeInsets.all(15),
@@ -1425,7 +1808,6 @@ class _MyHomePageState extends State<MyHomePage> {
                             _buildSidebarItem("Informasi", isActive: true),
                             _buildSidebarItem("Penyedia"),
                             _buildSidebarItem("Rincian"),
-                            // Add other menu items...
                           ],
                         ),
                       ),
@@ -1435,7 +1817,6 @@ class _MyHomePageState extends State<MyHomePage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // --- STICKY HEADER (Does not scroll) ---
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
@@ -1449,7 +1830,6 @@ class _MyHomePageState extends State<MyHomePage> {
                               ),
                               const Divider(color: Colors.white24),
 
-                              // --- SCROLLABLE CONTENT ---
                               Expanded(
                                 child: Theme(
                                   data: Theme.of(context).copyWith(
@@ -1489,7 +1869,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                           _buildDataRow("No. Kontrak", _selectedProjectDetail?['no_kontrak'] ?? '-'),
                                           _buildDataRow("Masa pelaksanaan", '${_selectedProjectDetail?['tgl_awal_kontrak'] ?? ""} s/d ${_selectedProjectDetail?['tgl_akhir_kontrak'] ?? ""}'),
                                           _buildDataRow("Keterangan", _selectedProjectDetail?['keterangan'] ?? '-'),
-                                          const SizedBox(height: 20), // Extra space at bottom
+                                          const SizedBox(height: 20),
                                         ],
                                       ),
                                     ),
@@ -1630,13 +2010,6 @@ class _MyHomePageState extends State<MyHomePage> {
                                   ],
                                 ),
                               ),
-                              //Expanded(
-                              //  child: SingleChildScrollView(
-                              //    child: Column(
-                              //      children: List.generate(10, (index) => _buildTableRow(index + 1)),
-                              //    ),
-                              //  ),
-                              //),
                             ],
                           ),
                         ),

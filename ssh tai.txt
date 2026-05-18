@@ -1,0 +1,3 @@
+ssh -i %USERPROFILE%\.ssh\gcp_key sigittekno565@34.101.227.57
+
+scp -i %USERPROFILE%\.ssh\gcp_key C:\local\file.txt sigittekno565@34.101.227.57:/var/www/scp/
