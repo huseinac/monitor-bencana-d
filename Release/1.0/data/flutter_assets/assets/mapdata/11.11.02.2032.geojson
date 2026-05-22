@@ -1,0 +1,10 @@
+{
+"type": "FeatureCollection",
+"name": "KDEPUM_11",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::9518" } },
+"xy_coordinate_resolution": 1e-15,
+"z_coordinate_resolution": 1e-15,
+"features": [
+{ "type": "Feature", "properties": { "OBJECTID": 12824, "NAMOBJ": "Ulee Blang", "FCODE": "BA03070040", "REMARK": " ", "METADATA": "TASWIL1000020221102_DATA_BATAS_DESAKELURAHAN", "SRS_ID": "4326", "KDBBPS": " ", "KDCBPS": " ", "KDCPUM": "11.11.02", "KDEBPS": " ", "KDEPUM": "11.11.02.2032", "KDPBPS": " ", "KDPKAB": "11.11", "KDPPUM": "11", "LUASWH": 0.0, "TIPADM": 1, "WADMKC": "Jeunieb", "WADMKD": "Ulee Blang", "WADMKK": "Bireuen", "WADMPR": "Aceh", "WIADKC": " ", "WIADKK": " ", "WIADPR": " ", "WIADKD": " ", "UUPP": "Hasil Delineasi Batas Desa 2019", "luas": 0.34932947614499998, "SHAPE_Length": 0.029443348005600636, "SHAPE_Area": 2.8491919275094657e-05, "LAYER": "ADMINISTRASI_AR_DESAKEL" }, "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 96.514236770000082, 5.153075038000054, 0.0 ], [ 96.51327524800007, 5.148077025000021, 0.0 ], [ 96.511687647000088, 5.148649232000025, 0.0 ], [ 96.51196195700004, 5.149500183000043, 0.0 ], [ 96.50935232900008, 5.150392297000053, 0.0 ], [ 96.509942427000055, 5.153388522000057, 0.0 ], [ 96.50764018600006, 5.154182670000068, 0.0 ], [ 96.50871094300004, 5.157918423000069, 0.0 ], [ 96.511090828000079, 5.157055931000059, 0.0 ], [ 96.510183079000058, 5.154344030000061, 0.0 ], [ 96.514236770000082, 5.153075038000054, 0.0 ] ] ] ] } }
+]
+}

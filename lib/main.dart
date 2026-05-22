@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -19,6 +21,48 @@ void main() async {
     hiveBoxName: 'map_tiles_cache',
   );
   runApp(MyApp(cacheStore: hiveCacheStore));
+}
+
+class MapWatermarkPainter extends CustomPainter {
+  final String text;
+  MapWatermarkPainter({required this.text});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final textPainter = TextPainter(
+      textDirection: TextDirection.ltr,
+    );
+
+    // Style your watermark text here (translucent grey is standard)
+    const textStyle = TextStyle(
+      color: Color(0x1AFFFFFF), // White color with 10% opacity (0x1A)
+      fontSize: 16,
+      fontWeight: FontWeight.bold,
+    );
+
+    // Space out the repeating text grids
+    const double stepX = 180;
+    const double stepY = 120;
+
+    for (double x = -50; x < size.width + 100; x += stepX) {
+      for (double y = -50; y < size.height + 100; y += stepY) {
+        canvas.save();
+        
+        // Move to the position and rotate the canvas 45 degrees diagonally
+        canvas.translate(x, y);
+        canvas.rotate(-0.785398); // -45 degrees in radians
+
+        textPainter.text = TextSpan(text: text, style: textStyle);
+        textPainter.layout();
+        textPainter.paint(canvas, Offset.zero);
+
+        canvas.restore();
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class ClickablePolygon {
@@ -73,10 +117,15 @@ class _MyHomePageState extends State<MyHomePage> {
 
   late String _currentTileUrl;
 
+  // These store EVERYTHING downloaded from the server (hidden in memory)
+  List<Marker> _allIndikatorMarkersMasterList = [];
+  List<Marker> _allPekerjaanMarkersMasterList = [];
+
   List<ClickablePolygon> _activePolygons = [];
   String? _selectedProvinceId;
   String? _selectedRegencyId;
   String? _hoveredCode;
+  DateTime _lastHoverCheck = DateTime.now();
   int _currentLevel = 1;
   List<Marker> _currentMarkers = [];
   bool _isLoading = false;
@@ -108,176 +157,215 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Marker> _updatedIndikatorMarkers = [];
 
   Future<void> _fetchIndikatorData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _indikatorData.clear();
+      _allIndikatorMarkersMasterList.clear();
+      _updatedIndikatorMarkers.clear();
+    });
 
-    String kodeWilayah = _selectedProvinceId ?? "";
+    String kodeWilayah = _selectedRegencyId ?? (_selectedProvinceId ?? "");
     String url = 'https://geopas.satgasprr.go.id/map/get_indikator?wilayah_kode=$kodeWilayah';
 
     try {
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> decodedData = json.decode(response.body);
-        debugPrint(decodedData.toString());
-        final List<dynamic> listIndikator = decodedData['list_indikator'] ?? [];
-        List<Marker> newMarkers = [];
-        int markerCount = 0;
-        List<dynamic> flatSektorList = [];
+        final receivePort = ReceivePort();
 
-        outerLoop:
-        for (var indikator in listIndikator) {
-          List<dynamic> listSektor = indikator['list_sektor_terdampak'] ?? [];
-          
-          for (var sektor in listSektor) {
-            if (markerCount >= 40) {
-              break outerLoop; 
-            }
-            double? lat = double.tryParse(sektor['latitude']?.toString() ?? '');
-            double? lng = double.tryParse(sektor['longitude']?.toString() ?? '');
+        await Isolate.spawn(
+          parseIndikatorJsonIsolate,
+          {
+            'jsonString': response.body,
+            'sendPort': receivePort.sendPort,
+          },
+        );
 
-            if (lat != null && lng != null) {
-              String markerImage = '';
-              if (sektor['indikator']['nama'].contains('Kantor')) {
-                  markerImage = 'building';
-              } else if (sektor['indikator']['nama'].contains('Faskes')) {
-                  markerImage = 'health';
-              } else if (
-                  sektor['indikator']['nama'].contains('PAUD') ||
-                  sektor['indikator']['nama'].contains('TK') ||
-                  sektor['indikator']['nama'].contains('SD') ||
-                  sektor['indikator']['nama'].contains('SMP') ||
-                  sektor['indikator']['nama'].contains('SMA/SMK') ||
-                  sektor['indikator']['nama'].contains('Madrasah/Ponpes')
-                ) {
-                  markerImage = 'school';
-              } else if (sektor['indikator']['nama'].contains('Jalan')) {
-                  markerImage = 'road';
-              } else if (sektor['indikator']['nama'].contains('Jembatan')) {
-                  markerImage = 'bride';
-              } else if (sektor['indikator']['nama'].contains('Kelistrikan')) {
-                  markerImage = 'electric';
-              } else if (sektor['indikator']['nama'].contains('PDAM/SPAM')) {
-                  markerImage = 'water';
-              } else if (sektor['indikator']['nama'].contains('Gedung Rumah Ibadah')) {
-                  markerImage = 'religion';
-              } else if (sektor['indikator']['nama'].contains('Sungai')) {
-                  markerImage = 'river';
-              } else if (
-                  sektor['indikator']['nama'].contains('Huntara') ||
-                  sektor['indikator']['nama'].contains('Huntap')
-                ) {
-                  markerImage = 'home';
-              } else if (sektor['indikator']['nama'].contains('Pengungsian')) {
-                  markerImage = 'homes';
-              } else if (
-                  sektor['indikator']['nama'].contains('toko diluar pasar') ||
-                  sektor['indikator']['nama'].contains('Hotel/Penginapan')
-                ) {
-                  markerImage = 'building';
-              } else if (sektor['indikator']['nama'].contains('SPBU')) {
-                  markerImage = 'gas_station';
-              } else if (sektor['indikator']['nama'].contains('Gas LPG')) {
-                  markerImage = 'gas';
-              } else if (
-                  sektor['indikator']['nama'].contains('Gedung/Sarpras Pasar') ||
-                  sektor['indikator']['nama'].contains('Gedung/Sarpras Resto/Warung/Kafe/kedai') ||
-                  sektor['indikator']['nama'].contains('Koperasi')
-                ) {
-                  markerImage = 'store';
-              } else if (sektor['indikator']['nama'].contains('INTERNET')) {
-                  markerImage = 'help';
-              } else if (
-                  sektor['indikator']['nama'].contains('Persawahan') ||
-                  sektor['indikator']['nama'].contains('Perikanan (Tambak)')
-                ) {
-                  markerImage = 'river';
-              } else if (
-                  sektor['indikator']['nama'].contains('Pembersihan lumpur') ||
-                  sektor['indikator']['nama'].contains('DTH')
-                ) {
-                  markerImage = 'help';
-              }
+        // --- NEW THROTTLED BUFFER VARIABLES ---
+        List<dynamic> backloggedData = [];
+        List<Marker> backloggedMarkers = [];
+        
+        // Track the last time we updated the screen
+        DateTime lastUiUpdateTime = DateTime.now();
+        Timer? periodicUpdateTimer;
 
-              switch (sektor['status']) {
-                case 'Atensi':
-                  markerImage += '-yellow';
-                break;
-                case 'Mendekati':
-                  markerImage += '-blue';
-                break;
-                case 'Sedang ditangani':
-                  markerImage += '-blue';
-                break;
-                case 'Belum ditangani':
-                  markerImage += '-red';
-                break;
-                default:
-              }
+        // Helper function to push backlogged items to the map layout safely
+        void flushBufferToUi() {
+          if (backloggedMarkers.isNotEmpty) {
+            setState(() {
+              _indikatorData.addAll(backloggedData);
+              
+              // Save directly to the master database list instead
+              _allIndikatorMarkersMasterList.addAll(backloggedMarkers);
+              
+              // Calculate which markers are actually visible on screen right now
+              _pruneVisibleMarkers();
+              
+              if (_isLoading) _isLoading = false;
+            });
+            backloggedData.clear();
+            backloggedMarkers.clear();
+            lastUiUpdateTime = DateTime.now();
+          }
+        }
 
-              markerImage += '.png';
+        // Start a subtle periodic fallback timer to ensure smooth visual updates even during bursts
+        periodicUpdateTimer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
+          flushBufferToUi();
+        });
+        // --------------------------------------
+
+        await for (var message in receivePort) {
+          if (message == 'DONE') {
+            periodicUpdateTimer.cancel();
+            flushBufferToUi(); // Flush anything left over
+            receivePort.close();
+            break;
+          }
+
+          if (message is Map && message.containsKey('isolate_error')) {
+            periodicUpdateTimer.cancel();
+            _showErrorSnippet("Error: ${message['isolate_error']}");
+            receivePort.close();
+            break;
+          }
+
+          if (message is List) {
+            for (var sektor in message) {
+              double lat = double.parse(sektor['latitude'].toString());
+              double lng = double.parse(sektor['longitude'].toString());
+              String markerImage = _getMarkerImageName(sektor);
 
               late final Marker uniqueMarker;
-                
               uniqueMarker = Marker(
                 point: LatLng(lat, lng),
                 width: 45,
                 height: 45,
                 alignment: Alignment.topCenter,
                 key: ValueKey(sektor),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    _popupLayerController.togglePopup(uniqueMarker);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(4), 
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A), 
-                      shape: BoxShape.circle,         
-                      border: Border.all(
-                        color: Colors.white,          
-                        width: 2.0,                   
+                child: RepaintBoundary( // <--- CRITICAL: Isolates paint instructions into GPU pixel texture memory
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _popupLayerController.togglePopup(uniqueMarker),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2.0),
+                        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))],
                       ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 4,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Image.asset(
-                      'assets/images/$markerImage',
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(Icons.location_on, color: Colors.red, size: 35);
-                      },
+                      child: Image.asset(
+                        'assets/images/$markerImage',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.location_on, color: Colors.red, size: 35),
+                      ),
                     ),
                   ),
                 ),
               );
 
-              newMarkers.add(uniqueMarker);
+              backloggedData.add(sektor);
+              backloggedMarkers.add(uniqueMarker);
+            }
 
-              flatSektorList.add(sektor);
-              markerCount++;
+            // If it's been more than 250ms since the last UI pass, refresh the map markers
+            if (DateTime.now().difference(lastUiUpdateTime).inMilliseconds > 250) {
+              flushBufferToUi();
             }
           }
         }
-
-        setState(() {
-          _indikatorData = flatSektorList;
-          _updatedIndikatorMarkers = newMarkers;
-        });
       } else {
         _showErrorSnippet("Gagal memuat data indikator (Status: ${response.statusCode})");
+        setState(() => _isLoading = false);
       }
     } catch (e) {
       debugPrint("Indikator fetch error: $e");
       _showErrorSnippet("Terjadi kesalahan saat mengambil data indikator.");
-    } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  void _pruneVisibleMarkers() {
+    // If the map isn't fully initialized yet, stop here
+    if (_mapController.camera == null) return;
+
+    // Get the current southwest and northeast coordinates visible on screen
+    final bounds = _mapController.camera.visibleBounds;
+    
+    // Pad the boundary slightly (by 0.5 degrees) so markers near the screen edge 
+    // don't awkwardly pop in or out when you start panning
+    final southWest = LatLng(bounds.southWest.latitude - 0.5, bounds.southWest.longitude - 0.5);
+    final northEast = LatLng(bounds.northEast.latitude + 0.5, bounds.northEast.longitude + 0.5);
+
+    setState(() {
+      // Filter the master list down to ONLY markers within the visible bounding box
+      _updatedIndikatorMarkers = _allIndikatorMarkersMasterList.where((marker) {
+        return marker.point.latitude >= southWest.latitude &&
+               marker.point.latitude <= northEast.latitude &&
+               marker.point.longitude >= southWest.longitude &&
+               marker.point.longitude <= northEast.longitude;
+      }).toList();
+
+      _pekerjaanMarkers = _allPekerjaanMarkersMasterList.where((marker) {
+        return marker.point.latitude >= southWest.latitude &&
+               marker.point.latitude <= northEast.latitude &&
+               marker.point.longitude >= southWest.longitude &&
+               marker.point.longitude <= northEast.longitude;
+      }).toList();
+    });
+  }
+
+  String _getMarkerImageName(Map<String, dynamic> sektor) {
+    String indicatorName = sektor['indikator']?['nama'] ?? '';
+    String markerImage = 'help'; // fallback default
+
+    if (indicatorName.contains('Kantor')) {
+      markerImage = 'building';
+    } else if (indicatorName.contains('Faskes')) {
+      markerImage = 'health';
+    } else if (['PAUD', 'TK', 'SD', 'SMP', 'SMA/SMK', 'Madrasah/Ponpes'].any(indicatorName.contains)) {
+      markerImage = 'school';
+    } else if (indicatorName.contains('Jalan')) {
+      markerImage = 'road';
+    } else if (indicatorName.contains('Jembatan')) {
+      markerImage = 'bride';
+    } else if (indicatorName.contains('Kelistrikan')) {
+      markerImage = 'electric';
+    } else if (indicatorName.contains('PDAM/SPAM')) {
+      markerImage = 'water';
+    } else if (indicatorName.contains('Gedung Rumah Ibadah')) {
+      markerImage = 'religion';
+    } else if (indicatorName.contains('Sungai')) {
+      markerImage = 'river';
+    } else if (['Huntara', 'Huntap'].any(indicatorName.contains)) {
+      markerImage = 'home';
+    } else if (indicatorName.contains('Pengungsian')) {
+      markerImage = 'homes';
+    } else if (['toko diluar pasar', 'Hotel/Penginapan'].any(indicatorName.contains)) {
+      markerImage = 'building';
+    } else if (indicatorName.contains('SPBU')) {
+      markerImage = 'gas_station';
+    } else if (indicatorName.contains('Gas LPG')) {
+      markerImage = 'gas';
+    } else if (['Gedung/Sarpras Pasar', 'Gedung/Sarpras Resto', 'Koperasi'].any(indicatorName.contains)) {
+      markerImage = 'store';
+    } else if (indicatorName.contains('INTERNET')) {
+      markerImage = 'help';
+    } else if (['Persawahan', 'Perikanan'].any(indicatorName.contains)) {
+      markerImage = 'river';
+    } else if (['Pembersihan lumpur', 'DTH'].any(indicatorName.contains)) {
+      markerImage = 'help';
+    }
+
+    switch (sektor['status']) {
+      case 'Atensi': markerImage += '-yellow'; break;
+      case 'Mendekati':
+      case 'Sedang ditangani': markerImage += '-blue'; break;
+      case 'Belum ditangani': markerImage += '-red'; break;
+    }
+
+    return '$markerImage.png';
   }
 
   Widget _buildIndikatorPopup(Marker marker) {
@@ -889,7 +977,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
       String auth = 'Basic ${base64Encode(utf8.encode('aingExcel:machinegunkelly'))}';
       final response = await http.get(
-        Uri.parse('http://localhost:8000/api/excel/wilayah/${_currentLevel == 4 ? 3 : _currentLevel}/$parentCode'),
+        Uri.parse('https://geopas.satgasprr.go.id/api/excel/wilayah/${_currentLevel == 4 ? 3 : _currentLevel}/$parentCode'),
         headers: {'Authorization': auth},
       );
 
@@ -1181,7 +1269,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     try {
       final response = await http.get(
-        Uri.parse('http://localhost:8000/api/excel/wilayah/${level == 4 ? 3 : level}/$parentCode'),
+        Uri.parse('https://geopas.satgasprr.go.id/api/excel/wilayah/${level == 4 ? 3 : level}/$parentCode'),
         headers: {'Authorization': auth},
       );
 
@@ -1237,6 +1325,10 @@ class _MyHomePageState extends State<MyHomePage> {
         _currentMarkers = newMarkers;
         _isLoading = false;
       });
+    }
+
+    if (_indikatorData.isNotEmpty ) {
+      _fetchIndikatorData();
     }
   }
 
@@ -1400,6 +1492,10 @@ class _MyHomePageState extends State<MyHomePage> {
                     initialZoom: 7.0,
                     onTap: (tapPos, point) => _handleMapTap(point),
                     onPointerHover: (event, point) {
+                      final now = DateTime.now();
+                      if (now.difference(_lastHoverCheck).inMilliseconds < 40) return;
+                      _lastHoverCheck = now;
+
                       String? hitCode;
                       for (var cp in _activePolygons) {
                         if (_isPointInPolygon(point, cp.polygon.points)) {
@@ -1409,6 +1505,11 @@ class _MyHomePageState extends State<MyHomePage> {
                       }
                       if (hitCode != _hoveredCode) {
                         setState(() => _hoveredCode = hitCode);
+                      }
+                    },
+                    onPositionChanged: (position, hasGesture) {
+                      if (hasGesture) {
+                        _pruneVisibleMarkers();
                       }
                     },
                   ),
@@ -1428,6 +1529,31 @@ class _MyHomePageState extends State<MyHomePage> {
                           borderStrokeWidth: isHovered ? 4 : 2,
                         );
                       }).toList(),
+                    ),
+                    MobileLayerTransformer(
+                        child: RepaintBoundary(
+                          child: PopupMarkerLayer(
+                            options: PopupMarkerLayerOptions(
+                              popupController: _popupLayerController,
+                              markers: [
+                                ..._pekerjaanMarkers,
+                                ..._updatedIndikatorMarkers,
+                              ],
+                              popupDisplayOptions: PopupDisplayOptions(
+                                snap: PopupSnap.markerTop, 
+                                builder: (BuildContext context, Marker marker) {
+                                  final dataPayload = (marker.key as ValueKey).value as Map<String, dynamic>;
+                                  
+                                  if (dataPayload.containsKey('list_sektor_terdampak') || dataPayload.containsKey('indikator')) {
+                                    return _buildIndikatorPopup(marker);
+                                  } else {
+                                    return _buildMarkerPopup(marker);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
                     ),
                     MarkerLayer(
                       markers: [
@@ -1455,31 +1581,7 @@ class _MyHomePageState extends State<MyHomePage> {
                               .toList()
                         else
                           ..._currentMarkers,
-                          
-                        ..._pekerjaanMarkers,
-                        ..._updatedIndikatorMarkers,
                       ],
-                    ),
-                    PopupMarkerLayer(
-                      options: PopupMarkerLayerOptions(
-                        popupController: _popupLayerController,
-                        markers: [
-                          ..._pekerjaanMarkers,
-                          ..._updatedIndikatorMarkers,
-                        ],
-                        popupDisplayOptions: PopupDisplayOptions(
-                          snap: PopupSnap.markerTop, 
-                          builder: (BuildContext context, Marker marker) {
-                            final dataPayload = (marker.key as ValueKey).value as Map<String, dynamic>;
-                            
-                            if (dataPayload.containsKey('list_sektor_terdampak') || dataPayload.containsKey('indikator')) {
-                              return _buildIndikatorPopup(marker);
-                            } else {
-                              return _buildMarkerPopup(marker);
-                            }
-                          },
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -1494,7 +1596,8 @@ class _MyHomePageState extends State<MyHomePage> {
             child: RepaintBoundary(
               child: SizedBox(
                 width: 150,
-                child: Column(
+                child: 
+                Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _buildSidebarButton(
@@ -1511,6 +1614,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       label: "Update kondisi (Indikator)",
                       onTap: () {
                         setState(() {
+                          _currentTileUrl = arcgisSatellite;
                           _showMonitorButton = 'update';
                         });
                         _fetchIndikatorData();
@@ -1521,6 +1625,12 @@ class _MyHomePageState extends State<MyHomePage> {
                       imagePath: 'assets/images/pekerjaan.png',
                       label: "DalRenduk",
                       onTap: () => setState(() {
+                        setState(() {
+                          _indikatorData.clear();
+                          _allIndikatorMarkersMasterList.clear();
+                          _updatedIndikatorMarkers.clear();
+                        });
+
                         _currentTileUrl = arcgisDefault;
                         _showMonitorButton = 'pekerjaan'; 
                         _fetchPekerjaanSummary('');
@@ -1531,7 +1641,14 @@ class _MyHomePageState extends State<MyHomePage> {
                     _buildSidebarButton(
                       imagePath: 'assets/images/tkd.png',
                       label: "TKD",
-                      onTap: () => setState(() => _showMonitorButton = 'tkd'),
+                      onTap: () => setState(() {
+                        _indikatorData.clear();
+                        _allIndikatorMarkersMasterList.clear();
+                        _updatedIndikatorMarkers.clear();
+
+                        _showMonitorButton = 'tkd';
+                        _currentTileUrl = arcgisSatellite;
+                      }),
                     ),
                   ],
                 ),
@@ -2021,5 +2138,46 @@ class _MyHomePageState extends State<MyHomePage> {
         ],
       ),
     );
+  }
+}
+
+void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
+  final String rawJson = params['jsonString'];
+  final SendPort sendPort = params['sendPort'];
+
+  try {
+    // Heavy JSON parsing occurs on background thread
+    final Map<String, dynamic> decodedData = json.decode(rawJson);
+    final List<dynamic> listIndikator = decodedData['list_indikator'] ?? [];
+
+    List<dynamic> chunkBatch = [];
+
+    for (var indikator in listIndikator) {
+      List<dynamic> listSektor = indikator['list_sektor_terdampak'] ?? [];
+      for (var sektor in listSektor) {
+        // Simple verification step
+        double? lat = double.tryParse(sektor['latitude']?.toString() ?? '');
+        double? lng = double.tryParse(sektor['longitude']?.toString() ?? '');
+
+        if (lat != null && lng != null) {
+          chunkBatch.add(sektor);
+
+          // Stream chunks of 20 raw maps back to the main thread
+          if (chunkBatch.length >= 20) {
+            sendPort.send(List.from(chunkBatch));
+            chunkBatch.clear();
+          }
+        }
+      }
+    }
+
+    // Send any remaining items
+    if (chunkBatch.isNotEmpty) {
+      sendPort.send(chunkBatch);
+    }
+  } catch (e) {
+    sendPort.send({'isolate_error': e.toString()});
+  } finally {
+    sendPort.send('DONE'); // Final closing signal
   }
 }

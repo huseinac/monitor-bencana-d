@@ -1,0 +1,10 @@
+{
+"type": "FeatureCollection",
+"name": "KDEPUM_11",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::9518" } },
+"xy_coordinate_resolution": 1e-15,
+"z_coordinate_resolution": 1e-15,
+"features": [
+{ "type": "Feature", "properties": { "OBJECTID": 11423, "NAMOBJ": "Pulo Kitou", "FCODE": "BA03070040", "REMARK": " ", "METADATA": "TASWIL1000020221102_DATA_BATAS_DESAKELURAHAN", "SRS_ID": "4326", "KDBBPS": " ", "KDCBPS": " ", "KDCPUM": "11.08.07", "KDEBPS": " ", "KDEPUM": "11.08.07.2031", "KDPBPS": " ", "KDPKAB": "11.08", "KDPPUM": "11", "LUASWH": 0.0, "TIPADM": 1, "WADMKC": "Meurah Mulia", "WADMKD": "Pulo Kitou", "WADMKK": "Aceh Utara", "WADMPR": "Aceh", "WIADKC": " ", "WIADKK": " ", "WIADPR": " ", "WIADKD": " ", "UUPP": "Hasil Delineasi Batas Desa 2019", "luas": 0.38036862214900002, "SHAPE_Length": 0.022254244136412905, "SHAPE_Area": 3.1019126866881715e-05, "LAYER": "ADMINISTRASI_AR_DESAKEL" }, "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 97.225814437000054, 5.061991485000021, 0.0 ], [ 97.225839970000038, 5.061984033000044, 0.0 ], [ 97.226609059000054, 5.061759590000065, 0.0 ], [ 97.225430907000032, 5.056783263000057, 0.0 ], [ 97.225017292000075, 5.055686283000057, 0.0 ], [ 97.224471717000085, 5.055906965000077, 0.0 ], [ 97.220092773000033, 5.057678224000028, 0.0 ], [ 97.221238395000057, 5.061143353000034, 0.0 ], [ 97.221327397000039, 5.061412554000071, 0.0 ], [ 97.221708638000052, 5.062565685000038, 0.0 ], [ 97.221896783000034, 5.063134765000029, 0.0 ], [ 97.225814437000054, 5.061991485000021, 0.0 ] ] ] ] } }
+]
+}

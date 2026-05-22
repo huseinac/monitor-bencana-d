@@ -1,0 +1,10 @@
+{
+"type": "FeatureCollection",
+"name": "KDEPUM_11",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::9518" } },
+"xy_coordinate_resolution": 1e-15,
+"z_coordinate_resolution": 1e-15,
+"features": [
+{ "type": "Feature", "properties": { "OBJECTID": 7864, "NAMOBJ": "Cot Laga Sawa", "FCODE": "BA03070040", "REMARK": " ", "METADATA": "TASWIL1000020221102_DATA_BATAS_DESAKELURAHAN", "SRS_ID": "4326", "KDBBPS": " ", "KDCBPS": " ", "KDCPUM": "11.11.14", "KDEBPS": " ", "KDEPUM": "11.11.14.2011", "KDPBPS": " ", "KDPKAB": "11.11", "KDPPUM": "11", "LUASWH": 0.0, "TIPADM": 1, "WADMKC": "Kuala", "WADMKD": "Cot Laga Sawa", "WADMKK": "Bireuen", "WADMPR": "Aceh", "WIADKC": " ", "WIADKK": " ", "WIADPR": " ", "WIADKD": " ", "UUPP": "Hasil Delineasi Batas Desa 2019", "luas": 0.23303261116000001, "SHAPE_Length": 0.019133321241113707, "SHAPE_Area": 1.9008672863821164e-05, "LAYER": "ADMINISTRASI_AR_DESAKEL" }, "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 96.72552422800004, 5.226632194000047, 0.0 ], [ 96.725428273000034, 5.225597080000057, 0.0 ], [ 96.725272306000079, 5.223968599000045, 0.0 ], [ 96.725356348000048, 5.22294572200002, 0.0 ], [ 96.719728923000048, 5.224242528000048, 0.0 ], [ 96.720786372000077, 5.225063068000054, 0.0 ], [ 96.720386624000071, 5.225209405000044, 0.0 ], [ 96.720397332000061, 5.225819735000073, 0.0 ], [ 96.720527012000048, 5.226216631000057, 0.0 ], [ 96.72091580700004, 5.228174678000073, 0.0 ], [ 96.722849119000045, 5.227377559000047, 0.0 ], [ 96.72552422800004, 5.226632194000047, 0.0 ] ] ] ] } }
+]
+}

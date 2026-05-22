@@ -1,0 +1,10 @@
+{
+"type": "FeatureCollection",
+"name": "KDEPUM_11",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::9518" } },
+"xy_coordinate_resolution": 1e-15,
+"z_coordinate_resolution": 1e-15,
+"features": [
+{ "type": "Feature", "properties": { "OBJECTID": 10550, "NAMOBJ": "Meunye Pirak", "FCODE": "BA03070040", "REMARK": " ", "METADATA": "TASWIL1000020221102_DATA_BATAS_DESAKELURAHAN", "SRS_ID": "4326", "KDBBPS": " ", "KDCBPS": " ", "KDCPUM": "11.08.05", "KDEBPS": " ", "KDEPUM": "11.08.05.2045", "KDPBPS": " ", "KDPKAB": "11.08", "KDPPUM": "11", "LUASWH": 0.0, "TIPADM": 1, "WADMKC": "Matangkuli", "WADMKD": "Meunye Pirak", "WADMKK": "Aceh Utara", "WADMPR": "Aceh", "WIADKC": " ", "WIADKK": " ", "WIADPR": " ", "WIADKD": " ", "UUPP": "Hasil Delineasi Batas Desa 2019", "luas": 0.069058899046199995, "SHAPE_Length": 0.01001063483413641, "SHAPE_Area": 5.631443943595154e-06, "LAYER": "ADMINISTRASI_AR_DESAKEL" }, "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 97.276987461000033, 5.020933556000045, 0.0 ], [ 97.276129418000039, 5.019775978000041, 0.0 ], [ 97.275477394000063, 5.020131107000054, 0.0 ], [ 97.275321729000041, 5.020149885000023, 0.0 ], [ 97.27316495000008, 5.02147087000003, 0.0 ], [ 97.273475001000065, 5.021847498000056, 0.0 ], [ 97.27366059700006, 5.022125894000055, 0.0 ], [ 97.273931856000047, 5.022390014000052, 0.0 ], [ 97.274381575000064, 5.022896841000033, 0.0 ], [ 97.276987461000033, 5.020933556000045, 0.0 ] ] ] ] } }
+]
+}
