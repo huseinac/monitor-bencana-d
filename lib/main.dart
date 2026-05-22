@@ -6,12 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cache/flutter_map_cache.dart';
+import 'package:flutter_map_marker_popup/flutter_map_marker_popup.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http_cache_hive_store/http_cache_hive_store.dart';
 import 'package:http/http.dart' as http;
 import 'mapdata/map_data.dart';
-import 'package:flutter_map_marker_popup/flutter_map_marker_popup.dart';
+import 'package:archive/archive.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -108,6 +109,50 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
+class AppImage extends StatelessWidget {
+  final String path;
+  final double? width;
+  final double? height;
+  final BoxFit? fit;
+  final Color? color;
+  final Widget Function(BuildContext, Object, StackTrace?)? errorBuilder;
+
+  const AppImage(
+    this.path, {
+    super.key,
+    this.width,
+    this.height,
+    this.fit,
+    this.color,
+    this.errorBuilder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // If the path contains a Windows drive letter (like C:\), load from File System
+    if (path.contains(':\\') || path.startsWith('\\')) {
+      return Image.file(
+        File(path),
+        width: width,
+        height: height,
+        fit: fit,
+        color: color,
+        errorBuilder: errorBuilder,
+      );
+    }
+    
+    // Otherwise, fallback safely to standard app bundle asset resource
+    return Image.asset(
+      path,
+      width: width,
+      height: height,
+      fit: fit,
+      color: color,
+      errorBuilder: errorBuilder,
+    );
+  }
+}
+
 class _MyHomePageState extends State<MyHomePage> {
   final MapController _mapController = MapController();
   final ScrollController _panelScrollController = ScrollController();
@@ -159,6 +204,150 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Marker> _allTkdMarkersMasterList = [];
   List<Marker> _tkdMarkers = [];
   List<dynamic> _tkdData = [];
+
+  String? _appDataPath;
+
+  Future<void> _initAppDataPath() async {
+    final directory = await getApplicationSupportDirectory();
+    setState(() {
+      _appDataPath = directory.path;
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _currentTileUrl = arcgisSatellite;
+    _loadInitialData();
+    _initAppDataPath();
+  }
+
+  String? _getSektorFotoPath(String? fotoFileName) {
+    // If the file name value from the JSON payload is null or completely empty, return null
+    if (fotoFileName == null || fotoFileName.trim().isEmpty) {
+      return null;
+    }
+
+    if (_appDataPath != null) {
+      // Construct the direct path targeting your unzipped AppData assets folder
+      final String relativePath = 'assets/$fotoFileName';
+      final String fullLocalPath = '$_appDataPath/$relativePath'.replaceAll('/', Platform.pathSeparator).replaceAll('\\', Platform.pathSeparator);
+
+      if (File(fullLocalPath).existsSync()) {
+        debugPrint('📸 🟢 [FOTO CACHE HIT]: Found local photo path -> $fullLocalPath');
+        return fullLocalPath;
+      }
+    }
+
+    debugPrint('📸 ⚡ [FOTO CACHE MISS]: Local photo file not found -> $fotoFileName');
+    return null; // Return null if it hasn't been downloaded or doesn't exist
+  }
+
+  String _getAssetPath(String relativePath) {
+    if (_appDataPath != null) {
+      final String combinedPath = '$_appDataPath/$relativePath';
+      
+      final String fullLocalPath = combinedPath.replaceAll('/', Platform.pathSeparator).replaceAll('\\', Platform.pathSeparator);
+      
+      if (File(fullLocalPath).existsSync()) {
+        return fullLocalPath;
+      }
+    }
+    
+    //debugPrint('$_appDataPath/$relativePath');
+    return relativePath;
+  }
+
+  String _getCleanFileName(String urlString) {
+    final Uri uri = Uri.parse(urlString);
+    return uri.pathSegments.last; 
+  }
+
+  Future<String> _fetchJsonData(String urlString) async {
+    final String fileName = _getCleanFileName(urlString);
+    
+    try {
+      final Directory appDataDir = await getApplicationSupportDirectory();
+      final File localCacheFile = File('${appDataDir.path}/json_data/$fileName.json');
+      
+      if (await localCacheFile.exists()) {
+        return await localCacheFile.readAsString();
+      }
+    } catch (e) {
+      debugPrint('[CACHE ERROR]: Failed reading file from AppData: $e');
+    }
+
+    final response = await http.get(Uri.parse(urlString));
+    if (response.statusCode == 200) {
+      return response.body;
+    } else {
+      throw Exception('Gagal mengambil data dari server API.');
+    }
+  }
+
+  // Download Button Trigger: Fetches live payloads manually and caches them into AppData
+  Future<void> _downloadAllJson() async {
+    setState(() => _isLoading = true);
+    
+    final List<String> endpoints = [
+      'https://geopas.satgasprr.go.id/map/get_anggaran',
+      'https://geopas.satgasprr.go.id/map/get_indikator',
+      'https://geopas.satgasprr.go.id/map/get_pekerjaan',
+    ];
+
+    try {
+      // Maps directly to AppData\Roaming\ on Windows
+      final Directory appDataDir = await getApplicationSupportDirectory();
+      
+      for (String url in endpoints) {
+        final response = await http.get(Uri.parse(url));
+        if (response.statusCode == 200) {
+          final String fileName = _getCleanFileName(url);
+          final File file = File('${appDataDir.path}/json_data/$fileName.json');
+          
+          await file.parent.create(recursive: true);
+          await file.writeAsString(response.body);
+        }
+      }
+
+      final String zipUrl = 'https://geopas.satgasprr.go.id/download_asset';
+      final zipResponse = await http.get(Uri.parse(zipUrl));
+
+      if (zipResponse.statusCode == 200) {
+        final Archive archive = ZipDecoder().decodeBytes(zipResponse.bodyBytes);
+
+        for (final ArchiveFile file in archive) {
+          final String filename = file.name;
+          
+          // Construct destination targeting AppData directory
+          final String localPath = '${appDataDir.path}/$filename';
+          final File outFile = File(localPath);
+
+          if (file.isFile) {
+            await outFile.parent.create(recursive: true);
+            await outFile.writeAsBytes(file.content as List<int>);
+            debugPrint('📂 Extracted asset: ${outFile.path}');
+          } else {
+            // If it's a directory item entry, ensure directory tree is created
+            await Directory(localPath).create(recursive: true);
+          }
+        }
+      } else {
+        throw Exception('Server returned code ${zipResponse.statusCode} for assets package zip.');
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Semua data JSON berhasil disinkronisasi ke AppData offline!')),
+        );
+      }
+    } catch (e) {
+      debugPrint("Gagal mengunduh cache data JSON ke AppData: $e");
+      _showErrorSnippet("Gagal mengunduh data JSON offline.");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
 
   Widget _buildTkdPopupCard(BuildContext context, Map<String, dynamic> item) {
     final Map<String, dynamic> wilayah = item['wilayah'] ?? {};
@@ -348,76 +537,76 @@ class _MyHomePageState extends State<MyHomePage> {
     String url = 'https://geopas.satgasprr.go.id/map/get_anggaran?wilayah_kode=$kodeWilayah';
 
     try {
-      final response = await http.get(Uri.parse(url));
+      //final response = await http.get(Uri.parse(url));
 
-      if (response.statusCode == 200) {
-        List<dynamic> data = json.decode(response.body);
-        List<Marker> newMarkers = [];
+      //List<dynamic> data = json.decode(response.body);
+      //List<Marker> newMarkers = [];
 
-        for (var item in data) {
-          var wilayah = item['wilayah'];
-          if (wilayah == null) continue;
+      final String jsonBody = await _fetchJsonData(url); // Uses cache, cancels api call if true
+      List<dynamic> data = json.decode(jsonBody);
+      List<Marker> newMarkers = [];
 
-          // Extracting latitude and longitude safely from the nested wilayah key
-          double? lat = double.tryParse(wilayah['latitude']?.toString() ?? '');
-          double? lng = double.tryParse(wilayah['longitude']?.toString() ?? '');
+      for (var item in data) {
+        var wilayah = item['wilayah'];
+        if (wilayah == null) continue;
 
-          if (lat != null && lng != null) {
-            String kondisi = wilayah['kondisi']?.toString() ?? 'Normal';
-            
-            //String markerImage = 'building';
-            //switch (kondisi) {
-            //  case 'Atensi': markerImage += '-yellow.png'; break;
-            //  case 'Mendekati': markerImage += '-blue.png'; break;
-            //  default: markerImage += '-blue.png'; // Fallback default icon asset
-            //}
-            String markerImage = 'building.png';
+        // Extracting latitude and longitude safely from the nested wilayah key
+        double? lat = double.tryParse(wilayah['latitude']?.toString() ?? '');
+        double? lng = double.tryParse(wilayah['longitude']?.toString() ?? '');
 
-            late final Marker tkdMarker;
-            tkdMarker = Marker(
-              point: LatLng(lat, lng),
-              width: 45,
-              height: 45,
-              alignment: Alignment.topCenter,
-              key: ValueKey(item),
-              child: RepaintBoundary(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  // Assuming you use the same popup layering strategy as your indicators
-                  onTap: () => _popupLayerController.togglePopup(tkdMarker),
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.cyanAccent, width: 2.0),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))
-                      ],
-                    ),
-                    child: Image.asset(
-                      'assets/images/$markerImage',
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => 
-                          const Icon(Icons.account_balance_wallet, color: Colors.greenAccent, size: 30),
-                    ),
+        if (lat != null && lng != null) {
+          String kondisi = wilayah['kondisi']?.toString() ?? 'Normal';
+          
+          //String markerImage = 'building';
+          //switch (kondisi) {
+          //  case 'Atensi': markerImage += '-yellow.png'; break;
+          //  case 'Mendekati': markerImage += '-blue.png'; break;
+          //  default: markerImage += '-blue.png'; // Fallback default icon asset
+          //}
+          String markerImage = 'building.png';
+
+          late final Marker tkdMarker;
+          tkdMarker = Marker(
+            point: LatLng(lat, lng),
+            width: 45,
+            height: 45,
+            alignment: Alignment.topCenter,
+            key: ValueKey(item),
+            child: RepaintBoundary(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                // Assuming you use the same popup layering strategy as your indicators
+                onTap: () => _popupLayerController.togglePopup(tkdMarker),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.cyanAccent, width: 2.0),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))
+                    ],
+                  ),
+                  child: AppImage(
+                    _getAssetPath('assets/icons/$markerImage'),
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => 
+                        const Icon(Icons.account_balance_wallet, color: Colors.greenAccent, size: 30),
                   ),
                 ),
               ),
-            );
+            ),
+          );
 
-            newMarkers.add(tkdMarker);
-          }
+          newMarkers.add(tkdMarker);
         }
-
-        setState(() {
-          _tkdData = data;
-          _allTkdMarkersMasterList = newMarkers;
-          _pruneVisibleMarkers(); // Call immediately to draw markers onto your current view
-        });
-      } else {
-        _showErrorSnippet("Gagal memuat data TKD (Status: ${response.statusCode})");
       }
+
+      setState(() {
+        _tkdData = data;
+        _allTkdMarkersMasterList = newMarkers;
+        _pruneVisibleMarkers();
+      });
     } catch (e) {
       debugPrint("TKD fetch error: $e");
       _showErrorSnippet("Terjadi kesalahan saat mengambil data Anggaran/TKD.");
@@ -427,10 +616,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _fetchIndikatorData() async {
-    if ( (_selectedRegencyId ?? (_selectedProvinceId ?? "")) == '' ) {
-      _showErrorSnippet("Mohon pilih wilayah terlebih dahulu");
-      return;
-    }
+    //if ( (_selectedRegencyId ?? (_selectedProvinceId ?? "")) == '' ) {
+    //  _showErrorSnippet("Mohon pilih wilayah terlebih dahulu");
+    //  return;
+    //}
 
     setState(() {
       _isLoading = true;
@@ -443,116 +632,121 @@ class _MyHomePageState extends State<MyHomePage> {
     String url = 'https://geopas.satgasprr.go.id/map/get_indikator?wilayah_kode=$kodeWilayah';
 
     try {
-      final response = await http.get(Uri.parse(url));
+      //final response = await http.get(Uri.parse(url));
 
-      if (response.statusCode == 200) {
-        final receivePort = ReceivePort();
+      //final receivePort = ReceivePort();
 
-        await Isolate.spawn(
-          parseIndikatorJsonIsolate,
-          {
-            'jsonString': response.body,
-            'sendPort': receivePort.sendPort,
-          },
-        );
+      //await Isolate.spawn(
+      //  parseIndikatorJsonIsolate,
+      //  {
+      //    'jsonString': response.body,
+      //    'sendPort': receivePort.sendPort,
+      //  },
+      //);
 
-        
-        List<dynamic> backloggedData = [];
-        List<Marker> backloggedMarkers = [];
-        
-        
-        DateTime lastUiUpdateTime = DateTime.now();
-        Timer? periodicUpdateTimer;
+      final String jsonBody = await _fetchJsonData(url); // Uses cache, cancels api call if true
+      final receivePort = ReceivePort();
 
-        
-        void flushBufferToUi() {
-          if (backloggedMarkers.isNotEmpty) {
-            setState(() {
-              _indikatorData.addAll(backloggedData);
-              
-              
-              _allIndikatorMarkersMasterList.addAll(backloggedMarkers);
-              
-              
-              _pruneVisibleMarkers();
-              
-              if (_isLoading) _isLoading = false;
-            });
-            backloggedData.clear();
-            backloggedMarkers.clear();
-            lastUiUpdateTime = DateTime.now();
-          }
+      await Isolate.spawn(
+        parseIndikatorJsonIsolate,
+        {
+          'jsonString': jsonBody,
+          'sendPort': receivePort.sendPort,
+        },
+      );
+
+      List<dynamic> backloggedData = [];
+      List<Marker> backloggedMarkers = [];
+      
+      
+      DateTime lastUiUpdateTime = DateTime.now();
+      Timer? periodicUpdateTimer;
+
+      
+      void flushBufferToUi() {
+        if (backloggedMarkers.isNotEmpty) {
+          setState(() {
+            _indikatorData.addAll(backloggedData);
+            
+            
+            _allIndikatorMarkersMasterList.addAll(backloggedMarkers);
+            
+            
+            _pruneVisibleMarkers();
+            
+            if (_isLoading) _isLoading = false;
+          });
+          backloggedData.clear();
+          backloggedMarkers.clear();
+          lastUiUpdateTime = DateTime.now();
+        }
+      }
+
+      
+      periodicUpdateTimer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
+        flushBufferToUi();
+      });
+      
+
+      await for (var message in receivePort) {
+        if (message == 'DONE') {
+          periodicUpdateTimer.cancel();
+          flushBufferToUi(); 
+          receivePort.close();
+          break;
         }
 
-        
-        periodicUpdateTimer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
-          flushBufferToUi();
-        });
-        
+        if (message is Map && message.containsKey('isolate_error')) {
+          periodicUpdateTimer.cancel();
+          _showErrorSnippet("Error: ${message['isolate_error']}");
+          receivePort.close();
+          break;
+        }
 
-        await for (var message in receivePort) {
-          if (message == 'DONE') {
-            periodicUpdateTimer.cancel();
-            flushBufferToUi(); 
-            receivePort.close();
-            break;
-          }
+        if (message is List) {
+          for (var sektor in message) {
+            double lat = double.parse(sektor['latitude'].toString());
+            double lng = double.parse(sektor['longitude'].toString());
+            String markerImage = _getMarkerImageName(sektor);
 
-          if (message is Map && message.containsKey('isolate_error')) {
-            periodicUpdateTimer.cancel();
-            _showErrorSnippet("Error: ${message['isolate_error']}");
-            receivePort.close();
-            break;
-          }
-
-          if (message is List) {
-            for (var sektor in message) {
-              double lat = double.parse(sektor['latitude'].toString());
-              double lng = double.parse(sektor['longitude'].toString());
-              String markerImage = _getMarkerImageName(sektor);
-
-              late final Marker uniqueMarker;
-              uniqueMarker = Marker(
-                point: LatLng(lat, lng),
-                width: 45,
-                height: 45,
-                alignment: Alignment.topCenter,
-                key: ValueKey(sektor),
-                child: RepaintBoundary( 
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _popupLayerController.togglePopup(uniqueMarker),
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2.0),
-                        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))],
-                      ),
-                      child: Image.asset(
-                        'assets/images/$markerImage',
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.location_on, color: Colors.red, size: 35),
-                      ),
+            late final Marker uniqueMarker;
+            uniqueMarker = Marker(
+              point: LatLng(lat, lng),
+              width: 45,
+              height: 45,
+              alignment: Alignment.topCenter,
+              key: ValueKey(sektor),
+              child: RepaintBoundary( 
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _popupLayerController.togglePopup(uniqueMarker),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1A),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2.0),
+                      boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))],
+                    ),
+                    child: AppImage(
+                      _getAssetPath('assets/icons/$markerImage'),
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.location_on, color: Colors.red, size: 35),
                     ),
                   ),
                 ),
-              );
+              ),
+            );
 
-              backloggedData.add(sektor);
-              backloggedMarkers.add(uniqueMarker);
-            }
+            backloggedData.add(sektor);
+            backloggedMarkers.add(uniqueMarker);
+          }
 
-            
-            if (DateTime.now().difference(lastUiUpdateTime).inMilliseconds > 250) {
-              flushBufferToUi();
-            }
+          
+          if (DateTime.now().difference(lastUiUpdateTime).inMilliseconds > 250) {
+            flushBufferToUi();
           }
         }
-      } else {
-        _showErrorSnippet("Gagal memuat data indikator (Status: ${response.statusCode})");
-        setState(() => _isLoading = false);
       }
     } catch (e) {
       debugPrint("Indikator fetch error: $e");
@@ -755,8 +949,80 @@ class _MyHomePageState extends State<MyHomePage> {
       break;
       default:
     }
-
     markerImage += '.png';
+
+    final String? sebelumPath = _getSektorFotoPath(sektor['foto_sebelum']);
+    final String? sesudahPath = _getSektorFotoPath(sektor['foto_sesudah']);
+
+    void _showLargeImageView(String title, String imagePath) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(16), // Gives a padding margin from the monitor window edges
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Click outside the image container to close the modal layout view
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(color: Colors.transparent),
+                ),
+                
+                // The Main Card Container
+                Container(
+                  width: 800, // Maximum bounding layout width on desktop view monitors
+                  height: 600,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1a2c42),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Modal Window Header Layout Banner
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              title,
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.white60, size: 20),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(color: Colors.white12, height: 1),
+                      
+                      // Expandable Image Content Section
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: AppImage(
+                              imagePath,
+                              fit: BoxFit.contain, // Fits neatly inside the view boundary constraints without clipping paths
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    }
 
     return Container(
       width: 320,
@@ -814,8 +1080,8 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                   child: Row(
                     children: [
-                      Image.asset(
-                        'assets/images/$markerImage',
+                      AppImage(
+                        _getAssetPath('assets/icons/$markerImage'),
                         width: 20,
                         height: 20,
                         fit: BoxFit.contain,
@@ -844,9 +1110,64 @@ class _MyHomePageState extends State<MyHomePage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                      // Left Side: Sebelum (Before) image preview action container wrapper
+                      Expanded(
+                        child: Center(
+                          child: sebelumPath != null
+                              ? InkWell(
+                                  borderRadius: BorderRadius.circular(4),
+                                  onTap: () => _showLargeImageView("Foto Kondisi Sebelum", sebelumPath),
+                                  child: Tooltip(
+                                    message: "Klik untuk memperbesar",
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: AppImage(
+                                        sebelumPath,
+                                        width: 100,
+                                        height: 70,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) => const Text(
+                                          "Gagal Memuat Gambar", 
+                                          style: TextStyle(color: Colors.redAccent, fontSize: 11)
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                        ),
+                      ),
+
+                      // Center Divider Arrow Icon
                       Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2), size: 16),
-                      const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+
+                      // Right Side: Sesudah (After) image preview action container wrapper
+                      Expanded(
+                        child: Center(
+                          child: sesudahPath != null
+                              ? InkWell(
+                                  borderRadius: BorderRadius.circular(4),
+                                  onTap: () => _showLargeImageView("Foto Kondisi Sesudah", sesudahPath),
+                                  child: Tooltip(
+                                    message: "Klik untuk memperbesar",
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: AppImage(
+                                        sesudahPath,
+                                        width: 100,
+                                        height: 70,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) => const Text(
+                                          "Gagal Memuat Gambar", 
+                                          style: TextStyle(color: Colors.redAccent, fontSize: 11)
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1118,131 +1439,135 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await http.get(
-        Uri.parse('https://geopas.satgasprr.go.id/map/get_pekerjaan?wilayah_kode=$kode'),
-      );
+      //final response = await http.get(
+      //  Uri.parse('https://geopas.satgasprr.go.id/map/get_pekerjaan?wilayah_kode=$kode'),
+      //);
 
-      if (response.statusCode == 200) {
-        List<dynamic> data = json.decode(response.body);
-        List<Marker> newMarkers = [];
+      //List<dynamic> data = json.decode(response.body);
+      //List<Marker> newMarkers = [];
 
-        for (var agency in data) {
-          
-          List<dynamic> projects = agency['list_pekerjaan'] ?? [];
-          
-          for (var project in projects) {
-            double? lat = double.tryParse(project['latitude']?.toString() ?? '');
-            double? lng = double.tryParse(project['longitude']?.toString() ?? '');
+      final String url = 'https://geopas.satgasprr.go.id/map/get_pekerjaan?wilayah_kode=$kode';
+      final String jsonBody = await _fetchJsonData(url); // Uses cache, cancels api call if true
+      
+      List<dynamic> data = json.decode(jsonBody);
+      List<Marker> newMarkers = [];
 
-            if (lat != null && lng != null) {
-              int categoryId = project['kategori_paket_pekerjaan_id'] ?? 0;
+      for (var agency in data) {
+        
+        List<dynamic> projects = agency['list_pekerjaan'] ?? [];
+        
+        for (var project in projects) {
+          double? lat = double.tryParse(project['latitude']?.toString() ?? '');
+          double? lng = double.tryParse(project['longitude']?.toString() ?? '');
 
-              String markerImage;
-              switch (categoryId) {
-                case 1:
-                  markerImage = 'building-yellow.png';
-                break;
-                case 2:
-                  markerImage = 'bride-yellow.png';
-                break;
-                case 3:
-                  markerImage = 'home-yellow.png';
-                break;
-                case 4:
-                  markerImage = 'homes-yellow.png';
-                break;
-                case 5:
-                  markerImage = 'school-yellow.png';
-                break;
-                case 6:
-                  markerImage = 'religion-yellow.png';
-                break;
-                case 7:
-                  markerImage = 'help-yellow.png';
-                break;
-                case 8:
-                  markerImage = 'health-yellow.png';
-                break;
-                case 9:
-                  markerImage = 'school-yellow.png';
-                break;
-                case 10:
-                  markerImage = 'road-yellow.png';
-                break;
-                case 11:
-                  markerImage = 'store-yellow.png';
-                break;
-                case 12:
-                  markerImage = 'store-yellow.png';
-                break;
-                case 13:
-                  markerImage = 'building-yellow.png';
-                break;
-                case 14:
-                  markerImage = 'river-yellow.png';
-                break;
-                case 15:
-                  markerImage = 'river-yellow.png';
-                break;
-                case 16:
-                  markerImage = 'water-yellow.png';
-                break;
-                case 17:
-                  markerImage = 'gas_station-yellow.png';
-                break;
-                case 18:
-                  markerImage = 'homes-yellow.png';
-                break;
-                case 19:
-                  markerImage = 'gas-yellow.png';
-                break;
-                case 20:
-                  markerImage = 'help-yellow.png';
-                break;
-                case 21:
-                  markerImage = 'electric-yellow.png';
-                break;
-                case 22:
-                  markerImage = 'road-yellow.png';
-                break;
-                case 23:
-                  markerImage = 'road-yellow.png';
-                break;
-                case 24:
-                  markerImage = 'road-yellow.png';
-                break;
-                case 25:
-                  markerImage = 'road-yellow.png';
-                break;
-                case 26:
-                  markerImage = 'river-yellow.png';
-                break;
-                default:
-                  markerImage = 'help-yellow.png';
-              }
+          if (lat != null && lng != null) {
+            int categoryId = project['kategori_paket_pekerjaan_id'] ?? 0;
 
-              newMarkers.add(
-                Marker(
-                  point: LatLng(lat, lng),
-                  width: 40,
-                  height: 40,
-                  key: ValueKey(project), 
-                  child: Image.asset(
-                    'assets/images/$markerImage',
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              );
+            String markerImage;
+            switch (categoryId) {
+              case 1:
+                markerImage = 'building-yellow.png';
+              break;
+              case 2:
+                markerImage = 'bride-yellow.png';
+              break;
+              case 3:
+                markerImage = 'home-yellow.png';
+              break;
+              case 4:
+                markerImage = 'homes-yellow.png';
+              break;
+              case 5:
+                markerImage = 'school-yellow.png';
+              break;
+              case 6:
+                markerImage = 'religion-yellow.png';
+              break;
+              case 7:
+                markerImage = 'help-yellow.png';
+              break;
+              case 8:
+                markerImage = 'health-yellow.png';
+              break;
+              case 9:
+                markerImage = 'school-yellow.png';
+              break;
+              case 10:
+                markerImage = 'road-yellow.png';
+              break;
+              case 11:
+                markerImage = 'store-yellow.png';
+              break;
+              case 12:
+                markerImage = 'store-yellow.png';
+              break;
+              case 13:
+                markerImage = 'building-yellow.png';
+              break;
+              case 14:
+                markerImage = 'river-yellow.png';
+              break;
+              case 15:
+                markerImage = 'river-yellow.png';
+              break;
+              case 16:
+                markerImage = 'water-yellow.png';
+              break;
+              case 17:
+                markerImage = 'gas_station-yellow.png';
+              break;
+              case 18:
+                markerImage = 'homes-yellow.png';
+              break;
+              case 19:
+                markerImage = 'gas-yellow.png';
+              break;
+              case 20:
+                markerImage = 'help-yellow.png';
+              break;
+              case 21:
+                markerImage = 'electric-yellow.png';
+              break;
+              case 22:
+                markerImage = 'road-yellow.png';
+              break;
+              case 23:
+                markerImage = 'road-yellow.png';
+              break;
+              case 24:
+                markerImage = 'road-yellow.png';
+              break;
+              case 25:
+                markerImage = 'road-yellow.png';
+              break;
+              case 26:
+                markerImage = 'river-yellow.png';
+              break;
+              default:
+                markerImage = 'help-yellow.png';
             }
+
+            newMarkers.add(
+              Marker(
+                point: LatLng(lat, lng),
+                width: 40,
+                height: 40,
+                key: ValueKey(project), 
+                child: AppImage(
+                  _getAssetPath('assets/icons/$markerImage'),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            );
           }
         }
-
-        setState(() {
-          _pekerjaanData = List<Map<String, dynamic>>.from(data);
-          _pekerjaanMarkers = newMarkers; 
-          _selectedPekerjaanIndex = 0;
-        });
       }
+
+      setState(() {
+        _pekerjaanData = List<Map<String, dynamic>>.from(data);
+        _pekerjaanMarkers = newMarkers; 
+        _selectedPekerjaanIndex = 0;
+      });
     } catch (e) {
       debugPrint("Marker fetch error: $e");
     } finally {
@@ -1375,13 +1700,6 @@ class _MyHomePageState extends State<MyHomePage> {
         ],
       ),
     );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _currentTileUrl = arcgisSatellite;
-    _loadInitialData();
   }
 
   void _rightPanelToggle() {
@@ -1754,8 +2072,8 @@ class _MyHomePageState extends State<MyHomePage> {
                 flex: 10,
                 child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Image.asset('assets/images/logo.png', height: 42))),
-            Image.asset('assets/images/logo2.png', height: 42),
+                    child: Image.asset('assets/icons/logo.png', height: 42))),
+            Image.asset('assets/icons/logo2.png', height: 42),
           ],
         ),
       ),
@@ -1891,7 +2209,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _buildSidebarButton(
-                      imagePath: 'assets/images/wilayah.png',
+                      imagePath: 'assets/icons/wilayah.png',
                       label: "Wilayah",
                       onTap: () => setState(() {
                         _currentTileUrl = arcgisSatellite;
@@ -1908,7 +2226,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     const SizedBox(height: 16),
                     _buildSidebarButton(
-                      imagePath: 'assets/images/indikator.png',
+                      imagePath: 'assets/icons/indikator.png',
                       label: "Update kondisi (Indikator)",
                       onTap: () {
                         setState(() {
@@ -1924,7 +2242,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     const SizedBox(height: 16),
                     _buildSidebarButton(
-                      imagePath: 'assets/images/pekerjaan.png',
+                      imagePath: 'assets/icons/pekerjaan.png',
                       label: "DalRenduk",
                       onTap: () => setState(() {
                         setState(() {
@@ -1945,7 +2263,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     const SizedBox(height: 16),
                     _buildSidebarButton(
-                      imagePath: 'assets/images/tkd.png',
+                      imagePath: 'assets/icons/tkd.png',
                       label: "TKD",
                       onTap: () => setState(() {
                         _fetchTkdData();
@@ -1977,6 +2295,30 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
 
+          //ElevatedButton.icon(
+          //  style: ElevatedButton.styleFrom(
+          //    backgroundColor: const Color(0xFF22467a),
+          //    foregroundColor: Colors.white,
+          //    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          //    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+          //  ),
+          //  icon: const Icon(Icons.download_for_offline, size: 16, color: Colors.cyanAccent),
+          //  label: const Text("Unduh Data Offline", style: TextStyle(fontSize: 11)),
+          //  onPressed: _downloadAllJson,
+          //),
+
+          Positioned(
+            bottom: 50,
+            right: 70,
+            child: FloatingActionButton.extended(
+              onPressed: _downloadAllJson,
+              label: const Text("Unduh data"),
+              icon: const Icon(Icons.download),
+              backgroundColor: MyApp.brandBlue,
+              foregroundColor: Colors.white,
+            ),
+          ),
+
           if (_isLoading)
             const Center(child: CircularProgressIndicator(color: Colors.green)),
 
@@ -1999,8 +2341,8 @@ class _MyHomePageState extends State<MyHomePage> {
                           border: Border.all(color: Colors.grey.withOpacity(0.5)),
                         ),
                         child: Center(
-                          child: Image.asset(
-                            'assets/images/database_${_showMonitorButton == 'wilayah' ? 'wilayah' : _showMonitorButton == 'update' ? 'indikator' : _showMonitorButton == 'pekerjaan' ? 'pekerjaan' : 'tkd'}.png',
+                          child: AppImage(
+                            _getAssetPath('assets/icons/database_${_showMonitorButton == 'wilayah' ? 'wilayah' : _showMonitorButton == 'update' ? 'indikator' : _showMonitorButton == 'pekerjaan' ? 'pekerjaan' : 'tkd'}.png'),
                             width: 30,
                             height: 30,
                             fit: BoxFit.contain,

@@ -6,12 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cache/flutter_map_cache.dart';
+import 'package:flutter_map_marker_popup/flutter_map_marker_popup.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http_cache_hive_store/http_cache_hive_store.dart';
 import 'package:http/http.dart' as http;
 import 'mapdata/map_data.dart';
-import 'package:flutter_map_marker_popup/flutter_map_marker_popup.dart';
+import 'package:archive/archive.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -160,6 +161,308 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Marker> _tkdMarkers = [];
   List<dynamic> _tkdData = [];
 
+  String? _appDataPath;
+
+  Future<void> _initAppDataPath() async {
+    final directory = await getApplicationSupportDirectory();
+    setState(() {
+      _appDataPath = directory.path;
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _currentTileUrl = arcgisSatellite;
+    _loadInitialData();
+    _initAppDataPath();
+  }
+
+  String _getAssetPath(String relativePath) {
+    if (_appDataPath != null) {
+      // Construct absolute target layout: e.g., C:\Users\husei\AppData\Roaming\...\assets\icons\jembatan.png
+      final String fullLocalPath = '$_appDataPath/$relativePath';
+      debugPrint(fullLocalPath);
+      
+      if (File(fullLocalPath).existsSync()) {
+        // ---> THIS CONFIRMS IT LOGGED FROM APPDATA DOWNLOADS CACHE <---
+        debugPrint('🖼️ 🟢 [ASSET HIT]: Loading dynamic file from AppData -> $relativePath');
+        return fullLocalPath; 
+      }
+    }
+    
+    // ---> THIS CONFIRMS IT IS USING YOUR COMPILED DEFAULT ASSETS <---
+    debugPrint('🖼️ ⚡ [ASSET MISS]: Asset not found in AppData folder. Fallback to built-in bundle -> $relativePath');
+    return relativePath; 
+  }
+
+  String _getCleanFileName(String urlString) {
+    final Uri uri = Uri.parse(urlString);
+    return uri.pathSegments.last; 
+  }
+
+  Future<String> _fetchJsonData(String urlString) async {
+    final String fileName = _getCleanFileName(urlString);
+    
+    try {
+      final Directory appDataDir = await getApplicationSupportDirectory();
+      final File localCacheFile = File('${appDataDir.path}/json_data/$fileName.json');
+      
+      if (await localCacheFile.exists()) {
+        return await localCacheFile.readAsString();
+      }
+    } catch (e) {
+      debugPrint('[CACHE ERROR]: Failed reading file from AppData: $e');
+    }
+
+    final response = await http.get(Uri.parse(urlString));
+    if (response.statusCode == 200) {
+      return response.body;
+    } else {
+      throw Exception('Gagal mengambil data dari server API.');
+    }
+  }
+
+  // Download Button Trigger: Fetches live payloads manually and caches them into AppData
+  Future<void> _downloadAllJson() async {
+    setState(() => _isLoading = true);
+    
+    final List<String> endpoints = [
+      'https://geopas.satgasprr.go.id/map/get_anggaran',
+      'https://geopas.satgasprr.go.id/map/get_indikator',
+      'https://geopas.satgasprr.go.id/map/get_pekerjaan',
+    ];
+
+    try {
+      // Maps directly to AppData\Roaming\ on Windows
+      final Directory appDataDir = await getApplicationSupportDirectory();
+      
+      for (String url in endpoints) {
+        final response = await http.get(Uri.parse(url));
+        if (response.statusCode == 200) {
+          final String fileName = _getCleanFileName(url);
+          final File file = File('${appDataDir.path}/json_data/$fileName.json');
+          
+          await file.parent.create(recursive: true);
+          await file.writeAsString(response.body);
+        }
+      }
+
+      final String zipUrl = 'https://geopas.satgasprr.go.id/download_asset';
+      final zipResponse = await http.get(Uri.parse(zipUrl));
+
+      if (zipResponse.statusCode == 200) {
+        final Archive archive = ZipDecoder().decodeBytes(zipResponse.bodyBytes);
+
+        for (final ArchiveFile file in archive) {
+          final String filename = file.name;
+          
+          // Construct destination targeting AppData directory
+          final String localPath = '${appDataDir.path}/$filename';
+          final File outFile = File(localPath);
+
+          if (file.isFile) {
+            await outFile.parent.create(recursive: true);
+            await outFile.writeAsBytes(file.content as List<int>);
+            debugPrint('📂 Extracted asset: ${outFile.path}');
+          } else {
+            // If it's a directory item entry, ensure directory tree is created
+            await Directory(localPath).create(recursive: true);
+          }
+        }
+      } else {
+        throw Exception('Server returned code ${zipResponse.statusCode} for assets package zip.');
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Semua data JSON berhasil disinkronisasi ke AppData offline!')),
+        );
+      }
+    } catch (e) {
+      debugPrint("Gagal mengunduh cache data JSON ke AppData: $e");
+      _showErrorSnippet("Gagal mengunduh data JSON offline.");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Widget _buildTkdPopupCard(BuildContext context, Map<String, dynamic> item) {
+    final Map<String, dynamic> wilayah = item['wilayah'] ?? {};
+    final List<dynamic> alokasiList = item['list_alokasi'] ?? [];
+
+    // 1. Calculate total nominal dynamically from raw JSON numbers
+    double totalNominalAlokasi = 0.0;
+    for (var alokasi in alokasiList) {
+      totalNominalAlokasi += double.tryParse(alokasi['nominal']?.toString() ?? '0') ?? 0.0;
+    }
+
+    // 2. Updated Utility: Returns the raw number digits formatted with standard commas
+    String formatRupiahCurrency(dynamic val) {
+      if (val == null) return "Rp 0";
+      
+      // If you want standard readable formatting (e.g., Rp 917,818,343,000)
+      double numericValue = double.tryParse(val.toString()) ?? 0.0;
+      RegExp reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+      String Function(Match) matchFunc = (Match match) => '${match[1]},';
+      return "Rp ${numericValue.toStringAsFixed(0).replaceAllMapped(reg, matchFunc)}";
+
+      // ALTERNATIVE: Un-comment the line below if you want completely raw unformatted digits (e.g., Rp 917818343000)
+      // return "Rp ${val.toString()}";
+    }
+
+    return Container(
+      width: 300,
+      constraints: const BoxConstraints(maxHeight: 380),
+      decoration: BoxDecoration(
+        color: const Color(0xFA1A1A1A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.cyanAccent, width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Colors.black87, blurRadius: 10, offset: Offset(0, 4)),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ==================== TOP SECTION ====================
+            Container(
+              padding: const EdgeInsets.all(12),
+              color: const Color(0xFF262626),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            const Icon(Icons.account_balance, color: Colors.cyanAccent, size: 16),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                wilayah['nama'] ?? 'Nama Wilayah',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        constraints: const BoxConstraints(),
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.close, color: Colors.white60, size: 16),
+                        onPressed: () => _popupLayerController.hideAllPopups(),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24, height: 12),
+                  _buildTkdPopupRow("Anggaran 2025:", formatRupiahCurrency(item['anggaran_2025'])),
+                  const SizedBox(height: 4),
+                  _buildTkdPopupRow("Anggaran 2026:", formatRupiahCurrency(item['anggaran_2026'])),
+                  const SizedBox(height: 4),
+                  _buildTkdPopupRow(
+                    "Penyesuaian:", 
+                    formatRupiahCurrency(item['penyesuaian']),
+                    valueColor: Colors.amberAccent,
+                  ),
+                ],
+              ),
+            ),
+            
+            Container(height: 1, color: Colors.cyanAccent.withOpacity(0.3)),
+
+            // ==================== MIDDLE SECTION ====================
+            const Padding(
+              padding: EdgeInsets.only(left: 12, top: 10, bottom: 4),
+              child: Text(
+                "Rincian Alokasi Urusan:",
+                style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 11),
+              ),
+            ),
+            
+            Flexible(
+              child: alokasiList.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Center(
+                        child: Text("Tidak ada rincian data alokasi.", style: TextStyle(color: Colors.white38, fontSize: 11)),
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      itemCount: alokasiList.length,
+                      separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 8),
+                      itemBuilder: (context, index) {
+                        final alokasi = alokasiList[index];
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                alokasi['keterangan'] ?? 'Urusan',
+                                style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              formatRupiahCurrency(alokasi['nominal']),
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+            ),
+
+            // ==================== BOTTOM SECTION ====================
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              color: const Color(0xFF1E1E1E),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Divider(color: Colors.white30, height: 1, thickness: 1),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Total:", 
+                        style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      Text(
+                        formatRupiahCurrency(totalNominalAlokasi),
+                        style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTkdPopupRow(String label, String value, {Color valueColor = Colors.white}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 11)),
+        Text(value, style: TextStyle(color: valueColor, fontSize: 11, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
   Future<void> _fetchTkdData() async {
     setState(() {
       _isLoading = true;
@@ -172,76 +475,76 @@ class _MyHomePageState extends State<MyHomePage> {
     String url = 'https://geopas.satgasprr.go.id/map/get_anggaran?wilayah_kode=$kodeWilayah';
 
     try {
-      final response = await http.get(Uri.parse(url));
+      //final response = await http.get(Uri.parse(url));
 
-      if (response.statusCode == 200) {
-        List<dynamic> data = json.decode(response.body);
-        List<Marker> newMarkers = [];
+      //List<dynamic> data = json.decode(response.body);
+      //List<Marker> newMarkers = [];
 
-        for (var item in data) {
-          var wilayah = item['wilayah'];
-          if (wilayah == null) continue;
+      final String jsonBody = await _fetchJsonData(url); // Uses cache, cancels api call if true
+      List<dynamic> data = json.decode(jsonBody);
+      List<Marker> newMarkers = [];
 
-          // Extracting latitude and longitude safely from the nested wilayah key
-          double? lat = double.tryParse(wilayah['latitude']?.toString() ?? '');
-          double? lng = double.tryParse(wilayah['longitude']?.toString() ?? '');
+      for (var item in data) {
+        var wilayah = item['wilayah'];
+        if (wilayah == null) continue;
 
-          if (lat != null && lng != null) {
-            String kondisi = wilayah['kondisi']?.toString() ?? 'Normal';
-            
-            //String markerImage = 'building';
-            //switch (kondisi) {
-            //  case 'Atensi': markerImage += '-yellow.png'; break;
-            //  case 'Mendekati': markerImage += '-blue.png'; break;
-            //  default: markerImage += '-blue.png'; // Fallback default icon asset
-            //}
-            String markerImage = 'building.png';
+        // Extracting latitude and longitude safely from the nested wilayah key
+        double? lat = double.tryParse(wilayah['latitude']?.toString() ?? '');
+        double? lng = double.tryParse(wilayah['longitude']?.toString() ?? '');
 
-            late final Marker tkdMarker;
-            tkdMarker = Marker(
-              point: LatLng(lat, lng),
-              width: 45,
-              height: 45,
-              alignment: Alignment.topCenter,
-              key: ValueKey(item),
-              child: RepaintBoundary(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  // Assuming you use the same popup layering strategy as your indicators
-                  onTap: () => _popupLayerController.togglePopup(tkdMarker),
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.cyanAccent, width: 2.0),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))
-                      ],
-                    ),
-                    child: Image.asset(
-                      'assets/images/$markerImage',
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => 
-                          const Icon(Icons.account_balance_wallet, color: Colors.greenAccent, size: 30),
-                    ),
+        if (lat != null && lng != null) {
+          String kondisi = wilayah['kondisi']?.toString() ?? 'Normal';
+          
+          //String markerImage = 'building';
+          //switch (kondisi) {
+          //  case 'Atensi': markerImage += '-yellow.png'; break;
+          //  case 'Mendekati': markerImage += '-blue.png'; break;
+          //  default: markerImage += '-blue.png'; // Fallback default icon asset
+          //}
+          String markerImage = 'building.png';
+
+          late final Marker tkdMarker;
+          tkdMarker = Marker(
+            point: LatLng(lat, lng),
+            width: 45,
+            height: 45,
+            alignment: Alignment.topCenter,
+            key: ValueKey(item),
+            child: RepaintBoundary(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                // Assuming you use the same popup layering strategy as your indicators
+                onTap: () => _popupLayerController.togglePopup(tkdMarker),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.cyanAccent, width: 2.0),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))
+                    ],
+                  ),
+                  child: Image.asset(
+                    _getAssetPath('assets/icons/$markerImage'),
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => 
+                        const Icon(Icons.account_balance_wallet, color: Colors.greenAccent, size: 30),
                   ),
                 ),
               ),
-            );
+            ),
+          );
 
-            newMarkers.add(tkdMarker);
-          }
+          newMarkers.add(tkdMarker);
         }
-
-        setState(() {
-          _tkdData = data;
-          _allTkdMarkersMasterList = newMarkers;
-          _pruneVisibleMarkers(); // Call immediately to draw markers onto your current view
-        });
-      } else {
-        _showErrorSnippet("Gagal memuat data TKD (Status: ${response.statusCode})");
       }
+
+      setState(() {
+        _tkdData = data;
+        _allTkdMarkersMasterList = newMarkers;
+        _pruneVisibleMarkers(); // Call immediately to draw markers onto your current view
+      });
     } catch (e) {
       debugPrint("TKD fetch error: $e");
       _showErrorSnippet("Terjadi kesalahan saat mengambil data Anggaran/TKD.");
@@ -267,116 +570,121 @@ class _MyHomePageState extends State<MyHomePage> {
     String url = 'https://geopas.satgasprr.go.id/map/get_indikator?wilayah_kode=$kodeWilayah';
 
     try {
-      final response = await http.get(Uri.parse(url));
+      //final response = await http.get(Uri.parse(url));
 
-      if (response.statusCode == 200) {
-        final receivePort = ReceivePort();
+      //final receivePort = ReceivePort();
 
-        await Isolate.spawn(
-          parseIndikatorJsonIsolate,
-          {
-            'jsonString': response.body,
-            'sendPort': receivePort.sendPort,
-          },
-        );
+      //await Isolate.spawn(
+      //  parseIndikatorJsonIsolate,
+      //  {
+      //    'jsonString': response.body,
+      //    'sendPort': receivePort.sendPort,
+      //  },
+      //);
 
-        
-        List<dynamic> backloggedData = [];
-        List<Marker> backloggedMarkers = [];
-        
-        
-        DateTime lastUiUpdateTime = DateTime.now();
-        Timer? periodicUpdateTimer;
+      final String jsonBody = await _fetchJsonData(url); // Uses cache, cancels api call if true
+      final receivePort = ReceivePort();
 
-        
-        void flushBufferToUi() {
-          if (backloggedMarkers.isNotEmpty) {
-            setState(() {
-              _indikatorData.addAll(backloggedData);
-              
-              
-              _allIndikatorMarkersMasterList.addAll(backloggedMarkers);
-              
-              
-              _pruneVisibleMarkers();
-              
-              if (_isLoading) _isLoading = false;
-            });
-            backloggedData.clear();
-            backloggedMarkers.clear();
-            lastUiUpdateTime = DateTime.now();
-          }
+      await Isolate.spawn(
+        parseIndikatorJsonIsolate,
+        {
+          'jsonString': jsonBody,
+          'sendPort': receivePort.sendPort,
+        },
+      );
+
+      List<dynamic> backloggedData = [];
+      List<Marker> backloggedMarkers = [];
+      
+      
+      DateTime lastUiUpdateTime = DateTime.now();
+      Timer? periodicUpdateTimer;
+
+      
+      void flushBufferToUi() {
+        if (backloggedMarkers.isNotEmpty) {
+          setState(() {
+            _indikatorData.addAll(backloggedData);
+            
+            
+            _allIndikatorMarkersMasterList.addAll(backloggedMarkers);
+            
+            
+            _pruneVisibleMarkers();
+            
+            if (_isLoading) _isLoading = false;
+          });
+          backloggedData.clear();
+          backloggedMarkers.clear();
+          lastUiUpdateTime = DateTime.now();
+        }
+      }
+
+      
+      periodicUpdateTimer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
+        flushBufferToUi();
+      });
+      
+
+      await for (var message in receivePort) {
+        if (message == 'DONE') {
+          periodicUpdateTimer.cancel();
+          flushBufferToUi(); 
+          receivePort.close();
+          break;
         }
 
-        
-        periodicUpdateTimer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
-          flushBufferToUi();
-        });
-        
+        if (message is Map && message.containsKey('isolate_error')) {
+          periodicUpdateTimer.cancel();
+          _showErrorSnippet("Error: ${message['isolate_error']}");
+          receivePort.close();
+          break;
+        }
 
-        await for (var message in receivePort) {
-          if (message == 'DONE') {
-            periodicUpdateTimer.cancel();
-            flushBufferToUi(); 
-            receivePort.close();
-            break;
-          }
+        if (message is List) {
+          for (var sektor in message) {
+            double lat = double.parse(sektor['latitude'].toString());
+            double lng = double.parse(sektor['longitude'].toString());
+            String markerImage = _getMarkerImageName(sektor);
 
-          if (message is Map && message.containsKey('isolate_error')) {
-            periodicUpdateTimer.cancel();
-            _showErrorSnippet("Error: ${message['isolate_error']}");
-            receivePort.close();
-            break;
-          }
-
-          if (message is List) {
-            for (var sektor in message) {
-              double lat = double.parse(sektor['latitude'].toString());
-              double lng = double.parse(sektor['longitude'].toString());
-              String markerImage = _getMarkerImageName(sektor);
-
-              late final Marker uniqueMarker;
-              uniqueMarker = Marker(
-                point: LatLng(lat, lng),
-                width: 45,
-                height: 45,
-                alignment: Alignment.topCenter,
-                key: ValueKey(sektor),
-                child: RepaintBoundary( 
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _popupLayerController.togglePopup(uniqueMarker),
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2.0),
-                        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))],
-                      ),
-                      child: Image.asset(
-                        'assets/images/$markerImage',
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.location_on, color: Colors.red, size: 35),
-                      ),
+            late final Marker uniqueMarker;
+            uniqueMarker = Marker(
+              point: LatLng(lat, lng),
+              width: 45,
+              height: 45,
+              alignment: Alignment.topCenter,
+              key: ValueKey(sektor),
+              child: RepaintBoundary( 
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _popupLayerController.togglePopup(uniqueMarker),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1A),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2.0),
+                      boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))],
+                    ),
+                    child: Image.asset(
+                      _getAssetPath('assets/icons/$markerImage'),
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.location_on, color: Colors.red, size: 35),
                     ),
                   ),
                 ),
-              );
+              ),
+            );
 
-              backloggedData.add(sektor);
-              backloggedMarkers.add(uniqueMarker);
-            }
+            backloggedData.add(sektor);
+            backloggedMarkers.add(uniqueMarker);
+          }
 
-            
-            if (DateTime.now().difference(lastUiUpdateTime).inMilliseconds > 250) {
-              flushBufferToUi();
-            }
+          
+          if (DateTime.now().difference(lastUiUpdateTime).inMilliseconds > 250) {
+            flushBufferToUi();
           }
         }
-      } else {
-        _showErrorSnippet("Gagal memuat data indikator (Status: ${response.statusCode})");
-        setState(() => _isLoading = false);
       }
     } catch (e) {
       debugPrint("Indikator fetch error: $e");
@@ -639,7 +947,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   child: Row(
                     children: [
                       Image.asset(
-                        'assets/images/$markerImage',
+                        _getAssetPath('assets/icons/$markerImage'),
                         width: 20,
                         height: 20,
                         fit: BoxFit.contain,
@@ -942,131 +1250,135 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await http.get(
-        Uri.parse('https://geopas.satgasprr.go.id/map/get_pekerjaan?wilayah_kode=$kode'),
-      );
+      //final response = await http.get(
+      //  Uri.parse('https://geopas.satgasprr.go.id/map/get_pekerjaan?wilayah_kode=$kode'),
+      //);
 
-      if (response.statusCode == 200) {
-        List<dynamic> data = json.decode(response.body);
-        List<Marker> newMarkers = [];
+      //List<dynamic> data = json.decode(response.body);
+      //List<Marker> newMarkers = [];
 
-        for (var agency in data) {
-          
-          List<dynamic> projects = agency['list_pekerjaan'] ?? [];
-          
-          for (var project in projects) {
-            double? lat = double.tryParse(project['latitude']?.toString() ?? '');
-            double? lng = double.tryParse(project['longitude']?.toString() ?? '');
+      final String url = 'https://geopas.satgasprr.go.id/map/get_pekerjaan?wilayah_kode=$kode';
+      final String jsonBody = await _fetchJsonData(url); // Uses cache, cancels api call if true
+      
+      List<dynamic> data = json.decode(jsonBody);
+      List<Marker> newMarkers = [];
 
-            if (lat != null && lng != null) {
-              int categoryId = project['kategori_paket_pekerjaan_id'] ?? 0;
+      for (var agency in data) {
+        
+        List<dynamic> projects = agency['list_pekerjaan'] ?? [];
+        
+        for (var project in projects) {
+          double? lat = double.tryParse(project['latitude']?.toString() ?? '');
+          double? lng = double.tryParse(project['longitude']?.toString() ?? '');
 
-              String markerImage;
-              switch (categoryId) {
-                case 1:
-                  markerImage = 'building-yellow.png';
-                break;
-                case 2:
-                  markerImage = 'bride-yellow.png';
-                break;
-                case 3:
-                  markerImage = 'home-yellow.png';
-                break;
-                case 4:
-                  markerImage = 'homes-yellow.png';
-                break;
-                case 5:
-                  markerImage = 'school-yellow.png';
-                break;
-                case 6:
-                  markerImage = 'religion-yellow.png';
-                break;
-                case 7:
-                  markerImage = 'help-yellow.png';
-                break;
-                case 8:
-                  markerImage = 'health-yellow.png';
-                break;
-                case 9:
-                  markerImage = 'school-yellow.png';
-                break;
-                case 10:
-                  markerImage = 'road-yellow.png';
-                break;
-                case 11:
-                  markerImage = 'store-yellow.png';
-                break;
-                case 12:
-                  markerImage = 'store-yellow.png';
-                break;
-                case 13:
-                  markerImage = 'building-yellow.png';
-                break;
-                case 14:
-                  markerImage = 'river-yellow.png';
-                break;
-                case 15:
-                  markerImage = 'river-yellow.png';
-                break;
-                case 16:
-                  markerImage = 'water-yellow.png';
-                break;
-                case 17:
-                  markerImage = 'gas_station-yellow.png';
-                break;
-                case 18:
-                  markerImage = 'homes-yellow.png';
-                break;
-                case 19:
-                  markerImage = 'gas-yellow.png';
-                break;
-                case 20:
-                  markerImage = 'help-yellow.png';
-                break;
-                case 21:
-                  markerImage = 'electric-yellow.png';
-                break;
-                case 22:
-                  markerImage = 'road-yellow.png';
-                break;
-                case 23:
-                  markerImage = 'road-yellow.png';
-                break;
-                case 24:
-                  markerImage = 'road-yellow.png';
-                break;
-                case 25:
-                  markerImage = 'road-yellow.png';
-                break;
-                case 26:
-                  markerImage = 'river-yellow.png';
-                break;
-                default:
-                  markerImage = 'help-yellow.png';
-              }
+          if (lat != null && lng != null) {
+            int categoryId = project['kategori_paket_pekerjaan_id'] ?? 0;
 
-              newMarkers.add(
-                Marker(
-                  point: LatLng(lat, lng),
-                  width: 40,
-                  height: 40,
-                  key: ValueKey(project), 
-                  child: Image.asset(
-                    'assets/images/$markerImage',
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              );
+            String markerImage;
+            switch (categoryId) {
+              case 1:
+                markerImage = 'building-yellow.png';
+              break;
+              case 2:
+                markerImage = 'bride-yellow.png';
+              break;
+              case 3:
+                markerImage = 'home-yellow.png';
+              break;
+              case 4:
+                markerImage = 'homes-yellow.png';
+              break;
+              case 5:
+                markerImage = 'school-yellow.png';
+              break;
+              case 6:
+                markerImage = 'religion-yellow.png';
+              break;
+              case 7:
+                markerImage = 'help-yellow.png';
+              break;
+              case 8:
+                markerImage = 'health-yellow.png';
+              break;
+              case 9:
+                markerImage = 'school-yellow.png';
+              break;
+              case 10:
+                markerImage = 'road-yellow.png';
+              break;
+              case 11:
+                markerImage = 'store-yellow.png';
+              break;
+              case 12:
+                markerImage = 'store-yellow.png';
+              break;
+              case 13:
+                markerImage = 'building-yellow.png';
+              break;
+              case 14:
+                markerImage = 'river-yellow.png';
+              break;
+              case 15:
+                markerImage = 'river-yellow.png';
+              break;
+              case 16:
+                markerImage = 'water-yellow.png';
+              break;
+              case 17:
+                markerImage = 'gas_station-yellow.png';
+              break;
+              case 18:
+                markerImage = 'homes-yellow.png';
+              break;
+              case 19:
+                markerImage = 'gas-yellow.png';
+              break;
+              case 20:
+                markerImage = 'help-yellow.png';
+              break;
+              case 21:
+                markerImage = 'electric-yellow.png';
+              break;
+              case 22:
+                markerImage = 'road-yellow.png';
+              break;
+              case 23:
+                markerImage = 'road-yellow.png';
+              break;
+              case 24:
+                markerImage = 'road-yellow.png';
+              break;
+              case 25:
+                markerImage = 'road-yellow.png';
+              break;
+              case 26:
+                markerImage = 'river-yellow.png';
+              break;
+              default:
+                markerImage = 'help-yellow.png';
             }
+
+            newMarkers.add(
+              Marker(
+                point: LatLng(lat, lng),
+                width: 40,
+                height: 40,
+                key: ValueKey(project), 
+                child: Image.asset(
+                  _getAssetPath('assets/icons/$markerImage'),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            );
           }
         }
-
-        setState(() {
-          _pekerjaanData = List<Map<String, dynamic>>.from(data);
-          _pekerjaanMarkers = newMarkers; 
-          _selectedPekerjaanIndex = 0;
-        });
       }
+
+      setState(() {
+        _pekerjaanData = List<Map<String, dynamic>>.from(data);
+        _pekerjaanMarkers = newMarkers; 
+        _selectedPekerjaanIndex = 0;
+      });
     } catch (e) {
       debugPrint("Marker fetch error: $e");
     } finally {
@@ -1199,13 +1511,6 @@ class _MyHomePageState extends State<MyHomePage> {
         ],
       ),
     );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _currentTileUrl = arcgisSatellite;
-    _loadInitialData();
   }
 
   void _rightPanelToggle() {
@@ -1578,8 +1883,8 @@ class _MyHomePageState extends State<MyHomePage> {
                 flex: 10,
                 child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Image.asset('assets/images/logo.png', height: 42))),
-            Image.asset('assets/images/logo2.png', height: 42),
+                    child: Image.asset('assets/icons/logo.png', height: 42))),
+            Image.asset('assets/icons/logo2.png', height: 42),
           ],
         ),
       ),
@@ -1636,32 +1941,6 @@ class _MyHomePageState extends State<MyHomePage> {
                         );
                       }).toList(),
                     ),
-                    MobileLayerTransformer(
-                        child: RepaintBoundary(
-                          child: PopupMarkerLayer(
-                            options: PopupMarkerLayerOptions(
-                              popupController: _popupLayerController,
-                              markers: [
-                                ..._pekerjaanMarkers,
-                                ..._updatedIndikatorMarkers,
-                                ..._tkdMarkers,
-                              ],
-                              popupDisplayOptions: PopupDisplayOptions(
-                                snap: PopupSnap.markerTop, 
-                                builder: (BuildContext context, Marker marker) {
-                                  final dataPayload = (marker.key as ValueKey).value as Map<String, dynamic>;
-                                  
-                                  if (dataPayload.containsKey('list_sektor_terdampak') || dataPayload.containsKey('indikator')) {
-                                    return _buildIndikatorPopup(marker);
-                                  } else {
-                                    return _buildMarkerPopup(marker);
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                    ),
                     MarkerLayer(
                       markers: [
                         if (_currentLevel == 1)
@@ -1690,6 +1969,39 @@ class _MyHomePageState extends State<MyHomePage> {
                           ..._currentMarkers,
                       ],
                     ),
+                    MobileLayerTransformer(
+                      child: RepaintBoundary(
+                        child: PopupMarkerLayer(
+                          options: PopupMarkerLayerOptions(
+                            popupController: _popupLayerController,
+                            markers: [
+                              ..._pekerjaanMarkers,
+                              ..._updatedIndikatorMarkers,
+                              ..._tkdMarkers,
+                            ],
+                            popupDisplayOptions: PopupDisplayOptions(
+                              snap: PopupSnap.markerTop, 
+                              builder: (BuildContext context, Marker marker) {
+                                // 1. Extract payload Map data safely via the marker's ValueKey wrapper
+                                final dataPayload = (marker.key as ValueKey).value as Map<String, dynamic>;
+                                
+                                // 2. Route payload to the TKD dual-section card UI if it contains list_alokasi
+                                if (dataPayload.containsKey('list_alokasi')) {
+                                  return _buildTkdPopupCard(context, dataPayload);
+                                }
+                                
+                                // 3. Fallback routing for your existing disaster indicators or generic markers
+                                if (dataPayload.containsKey('list_sektor_terdampak') || dataPayload.containsKey('indikator')) {
+                                  return _buildIndikatorPopup(marker);
+                                } else {
+                                  return _buildMarkerPopup(marker);
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1708,7 +2020,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _buildSidebarButton(
-                      imagePath: 'assets/images/wilayah.png',
+                      imagePath: 'assets/icons/wilayah.png',
                       label: "Wilayah",
                       onTap: () => setState(() {
                         _currentTileUrl = arcgisSatellite;
@@ -1725,7 +2037,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     const SizedBox(height: 16),
                     _buildSidebarButton(
-                      imagePath: 'assets/images/indikator.png',
+                      imagePath: 'assets/icons/indikator.png',
                       label: "Update kondisi (Indikator)",
                       onTap: () {
                         setState(() {
@@ -1741,7 +2053,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     const SizedBox(height: 16),
                     _buildSidebarButton(
-                      imagePath: 'assets/images/pekerjaan.png',
+                      imagePath: 'assets/icons/pekerjaan.png',
                       label: "DalRenduk",
                       onTap: () => setState(() {
                         setState(() {
@@ -1762,7 +2074,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     const SizedBox(height: 16),
                     _buildSidebarButton(
-                      imagePath: 'assets/images/tkd.png',
+                      imagePath: 'assets/icons/tkd.png',
                       label: "TKD",
                       onTap: () => setState(() {
                         _fetchTkdData();
@@ -1794,6 +2106,30 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
 
+          //ElevatedButton.icon(
+          //  style: ElevatedButton.styleFrom(
+          //    backgroundColor: const Color(0xFF22467a),
+          //    foregroundColor: Colors.white,
+          //    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          //    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+          //  ),
+          //  icon: const Icon(Icons.download_for_offline, size: 16, color: Colors.cyanAccent),
+          //  label: const Text("Unduh Data Offline", style: TextStyle(fontSize: 11)),
+          //  onPressed: _downloadAllJson,
+          //),
+
+          Positioned(
+            bottom: 50,
+            right: 70,
+            child: FloatingActionButton.extended(
+              onPressed: _downloadAllJson,
+              label: const Text("Unduh data"),
+              icon: const Icon(Icons.download),
+              backgroundColor: MyApp.brandBlue,
+              foregroundColor: Colors.white,
+            ),
+          ),
+
           if (_isLoading)
             const Center(child: CircularProgressIndicator(color: Colors.green)),
 
@@ -1817,7 +2153,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         ),
                         child: Center(
                           child: Image.asset(
-                            'assets/images/database_${_showMonitorButton == 'wilayah' ? 'wilayah' : _showMonitorButton == 'update' ? 'indikator' : _showMonitorButton == 'pekerjaan' ? 'pekerjaan' : 'tkd'}.png',
+                            _getAssetPath('assets/icons/database_${_showMonitorButton == 'wilayah' ? 'wilayah' : _showMonitorButton == 'update' ? 'indikator' : _showMonitorButton == 'pekerjaan' ? 'pekerjaan' : 'tkd'}.png'),
                             width: 30,
                             height: 30,
                             fit: BoxFit.contain,
@@ -2150,6 +2486,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Header Block
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -2173,6 +2510,8 @@ class _MyHomePageState extends State<MyHomePage> {
                         ],
                       ),
                       const SizedBox(height: 16),
+                      
+                      // Dropdown Selectors Row Block
                       Row(
                         children: [
                           Expanded(
@@ -2183,20 +2522,18 @@ class _MyHomePageState extends State<MyHomePage> {
                               onChanged: (String? newId) {
                                 setState(() {
                                   _selectedOptionProv = newId;
+                                  _currentLevel = 1;
+                                  _selectedOptionKabupaten = '';
+                                  _selectedOptionKecamatan = '';
+                                  if (newId != null && newId != 'All') {
+                                    _selectedProvinceId = newId;
+                                    _loadWilayahPanelData(newId, '');
+                                  } else {
+                                    _selectedProvinceId = null;
+                                    _currentMarkers = [];
+                                    _loadInitialData();
+                                  }
                                 });
-                                
-                                _currentLevel = 1;
-                                _selectedOptionKabupaten = '';
-                                _selectedOptionKecamatan = '';
-                                if (newId != null && newId != 'All') {
-                                  _selectedProvinceId = newId;
-                                  _loadWilayahPanelData(newId, '');
-                                } else {
-                                  _selectedProvinceId = null;
-                                  _currentMarkers = [];
-                                  _loadInitialData();
-                                  //_mapController.move(const LatLng(1.5000, 99.0000), 7.0);
-                                }
                               },
                             ),
                           ),
@@ -2209,7 +2546,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Text("$_selectedOptionKabupaten", style: TextStyle(color: Colors.white, fontSize: 11)),
+                                  Text("$_selectedOptionKabupaten", style: const TextStyle(color: Colors.white, fontSize: 11)),
                                 ],
                               ),
                             ),
@@ -2223,43 +2560,108 @@ class _MyHomePageState extends State<MyHomePage> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Text("$_selectedOptionKecamatan", style: TextStyle(color: Colors.white, fontSize: 11)),
+                                  Text("$_selectedOptionKecamatan", style: const TextStyle(color: Colors.white, fontSize: 11)),
                                 ],
                               ),
                             ),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 16),
+
+                      // Main Table Layout Content Container
                       Expanded(
                         child: Container(
                           decoration: BoxDecoration(
                             border: Border.all(color: Colors.white10),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Column(
-                            children: [
-                              
-                              Container(
-                                color: Colors.white.withOpacity(0.05),
-                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                                child: const Row(
-                                  children: [
-                                    Expanded(flex: 1, child: Text("No", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
-                                    Expanded(flex: 2, child: Text("Pemerintah daerah", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
-                                    Expanded(flex: 2, child: Text("TKD 2026", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
-                                    Expanded(flex: 2, child: Text("Penyesuaian TKD 2026", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
-                                    Expanded(flex: 2, child: Text("Total TKD 2026 setelah penyesuaian", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          child: Builder(
+                            builder: (context) {
+                              // 1. Dynamic filtering phase based on state constraints
+                              List<dynamic> displayList = [];
+                              if (_selectedOptionProv == null || _selectedOptionProv == 'All' || _selectedOptionProv == '') {
+                                displayList = List.from(_tkdData);
+                              } else {
+                                displayList = _tkdData.where((item) {
+                                  final wilayah = item['wilayah'] ?? {};
+                                  return wilayah['parent_kode']?.toString() == _selectedOptionProv.toString() ||
+                                         wilayah['kode']?.toString() == _selectedOptionProv.toString();
+                                }).toList();
+                              }
+
+                              // Number Thousand Comma Regex Formatter Utility
+                              String formatRawNum(dynamic val) {
+                                if (val == null) return "0";
+                                double numVal = double.tryParse(val.toString()) ?? 0.0;
+                                RegExp reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+                                return numVal.toStringAsFixed(0).replaceAllMapped(reg, (Match match) => '${match[1]},');
+                              }
+
+                              return Column(
+                                children: [
+                                  // Table Static Sticky Header
+                                  Container(
+                                    color: Colors.white.withOpacity(0.05),
+                                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                                    child: const Row(
+                                      children: [
+                                        Expanded(flex: 1, child: Text("No", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                        Expanded(flex: 3, child: Text("Pemerintah daerah", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                        Expanded(flex: 2, child: Text("TKD 2026", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                        Expanded(flex: 2, child: Text("Penyesuaian TKD 2026", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                        Expanded(flex: 3, child: Text("Total TKD setelah penyesuaian", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                      ],
+                                    ),
+                                  ),
+                                  
+                                  // Scrollable Table Rows System
+                                  Expanded(
+                                    child: displayList.isEmpty
+                                        ? const Center(
+                                            child: Text(
+                                              "Tidak ada data TKD tersedia untuk filter ini.",
+                                              style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic),
+                                            ),
+                                          )
+                                        : ListView.separated(
+                                            padding: EdgeInsets.zero,
+                                            itemCount: displayList.length,
+                                            separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+                                            itemBuilder: (context, index) {
+                                              final rowItem = displayList[index];
+                                              final wilayah = rowItem['wilayah'] ?? {};
+                                              
+                                              double ang2026 = double.tryParse(rowItem['anggaran_2026']?.toString() ?? '0') ?? 0.0;
+                                              double penyesuaian = double.tryParse(rowItem['penyesuaian']?.toString() ?? '0') ?? 0.0;
+                                              double totalAkhir = ang2026 + penyesuaian;
+
+                                              return Container(
+                                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                                                color: index % 2 == 0 ? Colors.transparent : Colors.white.withOpacity(0.02),
+                                                child: Row(
+                                                  children: [
+                                                    Expanded(flex: 1, child: Text("${index + 1}", style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                                                    Expanded(flex: 3, child: Text(wilayah['nama'] ?? '-', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+                                                    Expanded(flex: 2, child: Text(formatRawNum(ang2026), style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                                                    Expanded(flex: 2, child: Text(formatRawNum(penyesuaian), style: const TextStyle(color: Colors.amberAccent, fontSize: 11))),
+                                                    Expanded(flex: 3, child: Text(formatRawNum(totalAkhir), style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold))),
+                                                  ],
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
+              )
         ],
       ),
     );
