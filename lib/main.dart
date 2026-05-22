@@ -33,14 +33,14 @@ class MapWatermarkPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     );
 
-    // Style your watermark text here (translucent grey is standard)
+    
     const textStyle = TextStyle(
-      color: Color(0x1AFFFFFF), // White color with 10% opacity (0x1A)
+      color: Color(0x1AFFFFFF), 
       fontSize: 16,
       fontWeight: FontWeight.bold,
     );
 
-    // Space out the repeating text grids
+    
     const double stepX = 180;
     const double stepY = 120;
 
@@ -48,9 +48,9 @@ class MapWatermarkPainter extends CustomPainter {
       for (double y = -50; y < size.height + 100; y += stepY) {
         canvas.save();
         
-        // Move to the position and rotate the canvas 45 degrees diagonally
+        
         canvas.translate(x, y);
-        canvas.rotate(-0.785398); // -45 degrees in radians
+        canvas.rotate(-0.785398); 
 
         textPainter.text = TextSpan(text: text, style: textStyle);
         textPainter.layout();
@@ -117,7 +117,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   late String _currentTileUrl;
 
-  // These store EVERYTHING downloaded from the server (hidden in memory)
+  
   List<Marker> _allIndikatorMarkersMasterList = [];
   List<Marker> _allPekerjaanMarkersMasterList = [];
 
@@ -181,24 +181,24 @@ class _MyHomePageState extends State<MyHomePage> {
           },
         );
 
-        // --- NEW THROTTLED BUFFER VARIABLES ---
+        
         List<dynamic> backloggedData = [];
         List<Marker> backloggedMarkers = [];
         
-        // Track the last time we updated the screen
+        
         DateTime lastUiUpdateTime = DateTime.now();
         Timer? periodicUpdateTimer;
 
-        // Helper function to push backlogged items to the map layout safely
+        
         void flushBufferToUi() {
           if (backloggedMarkers.isNotEmpty) {
             setState(() {
               _indikatorData.addAll(backloggedData);
               
-              // Save directly to the master database list instead
+              
               _allIndikatorMarkersMasterList.addAll(backloggedMarkers);
               
-              // Calculate which markers are actually visible on screen right now
+              
               _pruneVisibleMarkers();
               
               if (_isLoading) _isLoading = false;
@@ -209,16 +209,16 @@ class _MyHomePageState extends State<MyHomePage> {
           }
         }
 
-        // Start a subtle periodic fallback timer to ensure smooth visual updates even during bursts
+        
         periodicUpdateTimer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
           flushBufferToUi();
         });
-        // --------------------------------------
+        
 
         await for (var message in receivePort) {
           if (message == 'DONE') {
             periodicUpdateTimer.cancel();
-            flushBufferToUi(); // Flush anything left over
+            flushBufferToUi(); 
             receivePort.close();
             break;
           }
@@ -243,7 +243,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 height: 45,
                 alignment: Alignment.topCenter,
                 key: ValueKey(sektor),
-                child: RepaintBoundary( // <--- CRITICAL: Isolates paint instructions into GPU pixel texture memory
+                child: RepaintBoundary( 
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () => _popupLayerController.togglePopup(uniqueMarker),
@@ -269,7 +269,7 @@ class _MyHomePageState extends State<MyHomePage> {
               backloggedMarkers.add(uniqueMarker);
             }
 
-            // If it's been more than 250ms since the last UI pass, refresh the map markers
+            
             if (DateTime.now().difference(lastUiUpdateTime).inMilliseconds > 250) {
               flushBufferToUi();
             }
@@ -287,19 +287,19 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _pruneVisibleMarkers() {
-    // If the map isn't fully initialized yet, stop here
+    
     if (_mapController.camera == null) return;
 
-    // Get the current southwest and northeast coordinates visible on screen
+    
     final bounds = _mapController.camera.visibleBounds;
     
-    // Pad the boundary slightly (by 0.5 degrees) so markers near the screen edge 
-    // don't awkwardly pop in or out when you start panning
+    
+    
     final southWest = LatLng(bounds.southWest.latitude - 0.5, bounds.southWest.longitude - 0.5);
     final northEast = LatLng(bounds.northEast.latitude + 0.5, bounds.northEast.longitude + 0.5);
 
     setState(() {
-      // Filter the master list down to ONLY markers within the visible bounding box
+      
       _updatedIndikatorMarkers = _allIndikatorMarkersMasterList.where((marker) {
         return marker.point.latitude >= southWest.latitude &&
                marker.point.latitude <= northEast.latitude &&
@@ -318,7 +318,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   String _getMarkerImageName(Map<String, dynamic> sektor) {
     String indicatorName = sektor['indikator']?['nama'] ?? '';
-    String markerImage = 'help'; // fallback default
+    String markerImage = 'help'; 
 
     if (indicatorName.contains('Kantor')) {
       markerImage = 'building';
@@ -845,7 +845,7 @@ class _MyHomePageState extends State<MyHomePage> {
         List<Marker> newMarkers = [];
 
         for (var agency in data) {
-          // Access the nested "list_pekerjaan" array
+          
           List<dynamic> projects = agency['list_pekerjaan'] ?? [];
           
           for (var project in projects) {
@@ -1065,7 +1065,7 @@ class _MyHomePageState extends State<MyHomePage> {
       margin: const EdgeInsets.only(bottom: 5),
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
       decoration: BoxDecoration(
-        // Highlight the active tab with the brand blue or a dark wood tone
+        
         color: isActive ? const Color(0xFF22467A) : Colors.transparent,
         borderRadius: BorderRadius.circular(4),
       ),
@@ -1169,7 +1169,7 @@ class _MyHomePageState extends State<MyHomePage> {
           icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
           isExpanded: true,
           style: const TextStyle(color: Colors.white, fontSize: 12),
-          // Iterate through Map entries
+          
           items: items.entries.map((entry) {
             return DropdownMenuItem<String>(
               value: entry.key,   
@@ -2113,7 +2113,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                           child: Column(
                             children: [
-                              // Table Header
+                              
                               Container(
                                 color: Colors.white.withOpacity(0.05),
                                 padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
@@ -2146,7 +2146,6 @@ void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
   final SendPort sendPort = params['sendPort'];
 
   try {
-    // Heavy JSON parsing occurs on background thread
     final Map<String, dynamic> decodedData = json.decode(rawJson);
     final List<dynamic> listIndikator = decodedData['list_indikator'] ?? [];
 
@@ -2155,14 +2154,13 @@ void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
     for (var indikator in listIndikator) {
       List<dynamic> listSektor = indikator['list_sektor_terdampak'] ?? [];
       for (var sektor in listSektor) {
-        // Simple verification step
+        
         double? lat = double.tryParse(sektor['latitude']?.toString() ?? '');
         double? lng = double.tryParse(sektor['longitude']?.toString() ?? '');
 
         if (lat != null && lng != null) {
           chunkBatch.add(sektor);
 
-          // Stream chunks of 20 raw maps back to the main thread
           if (chunkBatch.length >= 20) {
             sendPort.send(List.from(chunkBatch));
             chunkBatch.clear();
@@ -2171,13 +2169,12 @@ void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
       }
     }
 
-    // Send any remaining items
     if (chunkBatch.isNotEmpty) {
       sendPort.send(chunkBatch);
     }
   } catch (e) {
     sendPort.send({'isolate_error': e.toString()});
   } finally {
-    sendPort.send('DONE'); // Final closing signal
+    sendPort.send('DONE');
   }
 }
