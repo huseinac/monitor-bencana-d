@@ -23,6 +23,48 @@ void main() async {
   runApp(MyApp(cacheStore: hiveCacheStore));
 }
 
+class MapWatermarkPainter extends CustomPainter {
+  final String text;
+  MapWatermarkPainter({required this.text});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final textPainter = TextPainter(
+      textDirection: TextDirection.ltr,
+    );
+
+    
+    const textStyle = TextStyle(
+      color: Color(0x1AFFFFFF), 
+      fontSize: 16,
+      fontWeight: FontWeight.bold,
+    );
+
+    
+    const double stepX = 180;
+    const double stepY = 120;
+
+    for (double x = -50; x < size.width + 100; x += stepX) {
+      for (double y = -50; y < size.height + 100; y += stepY) {
+        canvas.save();
+        
+        
+        canvas.translate(x, y);
+        canvas.rotate(-0.785398); 
+
+        textPainter.text = TextSpan(text: text, style: textStyle);
+        textPainter.layout();
+        textPainter.paint(canvas, Offset.zero);
+
+        canvas.restore();
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class ClickablePolygon {
   final Polygon polygon;
   final String code;
@@ -75,6 +117,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   late String _currentTileUrl;
 
+  
+  List<Marker> _allIndikatorMarkersMasterList = [];
+  List<Marker> _allPekerjaanMarkersMasterList = [];
+
   List<ClickablePolygon> _activePolygons = [];
   String? _selectedProvinceId;
   String? _selectedRegencyId;
@@ -110,243 +156,65 @@ class _MyHomePageState extends State<MyHomePage> {
   List<dynamic> _indikatorData = [];
   List<Marker> _updatedIndikatorMarkers = [];
 
-  //Future<void> _fetchIndikatorData() async {
-  //  setState(() => _isLoading = true);
+  List<Marker> _allTkdMarkersMasterList = [];
+  List<Marker> _tkdMarkers = [];
+  List<dynamic> _tkdData = [];
 
-  //  String kodeWilayah = _selectedRegencyId ?? (_selectedProvinceId ?? "");
-  //  String url = 'https://geopas.satgasprr.go.id/map/get_indikator?wilayah_kode=$kodeWilayah';
-  //  debugPrint(url);
-
-  //  try {
-  //    final response = await http.get(Uri.parse(url));
-
-  //    if (response.statusCode == 200) {
-  //      final Map<String, dynamic> decodedData = json.decode(response.body);
-  //      final List<dynamic> listIndikator = decodedData['list_indikator'] ?? [];
-  //      List<Marker> newMarkers = [];
-  //      int markerCount = 0;
-  //      List<dynamic> flatSektorList = [];
-
-  //      outerLoop:
-  //      for (var indikator in listIndikator) {
-  //        List<dynamic> listSektor = indikator['list_sektor_terdampak'] ?? [];
-          
-  //        for (var sektor in listSektor) {
-  //          if (markerCount >= 40) {
-  //            break outerLoop; 
-  //          }
-  //          double? lat = double.tryParse(sektor['latitude']?.toString() ?? '');
-  //          double? lng = double.tryParse(sektor['longitude']?.toString() ?? '');
-
-  //          if (lat != null && lng != null) {
-  //            String markerImage = '';
-  //            if (sektor['indikator']['nama'].contains('Kantor')) {
-  //                markerImage = 'building';
-  //            } else if (sektor['indikator']['nama'].contains('Faskes')) {
-  //                markerImage = 'health';
-  //            } else if (
-  //                sektor['indikator']['nama'].contains('PAUD') ||
-  //                sektor['indikator']['nama'].contains('TK') ||
-  //                sektor['indikator']['nama'].contains('SD') ||
-  //                sektor['indikator']['nama'].contains('SMP') ||
-  //                sektor['indikator']['nama'].contains('SMA/SMK') ||
-  //                sektor['indikator']['nama'].contains('Madrasah/Ponpes')
-  //              ) {
-  //                markerImage = 'school';
-  //            } else if (sektor['indikator']['nama'].contains('Jalan')) {
-  //                markerImage = 'road';
-  //            } else if (sektor['indikator']['nama'].contains('Jembatan')) {
-  //                markerImage = 'bride';
-  //            } else if (sektor['indikator']['nama'].contains('Kelistrikan')) {
-  //                markerImage = 'electric';
-  //            } else if (sektor['indikator']['nama'].contains('PDAM/SPAM')) {
-  //                markerImage = 'water';
-  //            } else if (sektor['indikator']['nama'].contains('Gedung Rumah Ibadah')) {
-  //                markerImage = 'religion';
-  //            } else if (sektor['indikator']['nama'].contains('Sungai')) {
-  //                markerImage = 'river';
-  //            } else if (
-  //                sektor['indikator']['nama'].contains('Huntara') ||
-  //                sektor['indikator']['nama'].contains('Huntap')
-  //              ) {
-  //                markerImage = 'home';
-  //            } else if (sektor['indikator']['nama'].contains('Pengungsian')) {
-  //                markerImage = 'homes';
-  //            } else if (
-  //                sektor['indikator']['nama'].contains('toko diluar pasar') ||
-  //                sektor['indikator']['nama'].contains('Hotel/Penginapan')
-  //              ) {
-  //                markerImage = 'building';
-  //            } else if (sektor['indikator']['nama'].contains('SPBU')) {
-  //                markerImage = 'gas_station';
-  //            } else if (sektor['indikator']['nama'].contains('Gas LPG')) {
-  //                markerImage = 'gas';
-  //            } else if (
-  //                sektor['indikator']['nama'].contains('Gedung/Sarpras Pasar') ||
-  //                sektor['indikator']['nama'].contains('Gedung/Sarpras Resto/Warung/Kafe/kedai') ||
-  //                sektor['indikator']['nama'].contains('Koperasi')
-  //              ) {
-  //                markerImage = 'store';
-  //            } else if (sektor['indikator']['nama'].contains('INTERNET')) {
-  //                markerImage = 'help';
-  //            } else if (
-  //                sektor['indikator']['nama'].contains('Persawahan') ||
-  //                sektor['indikator']['nama'].contains('Perikanan (Tambak)')
-  //              ) {
-  //                markerImage = 'river';
-  //            } else if (
-  //                sektor['indikator']['nama'].contains('Pembersihan lumpur') ||
-  //                sektor['indikator']['nama'].contains('DTH')
-  //              ) {
-  //                markerImage = 'help';
-  //            }
-
-  //            switch (sektor['status']) {
-  //              case 'Atensi':
-  //                markerImage += '-yellow';
-  //              break;
-  //              case 'Mendekati':
-  //                markerImage += '-blue';
-  //              break;
-  //              case 'Sedang ditangani':
-  //                markerImage += '-blue';
-  //              break;
-  //              case 'Belum ditangani':
-  //                markerImage += '-red';
-  //              break;
-  //              default:
-  //            }
-
-  //            markerImage += '.png';
-
-  //            late final Marker uniqueMarker;
-                
-  //            uniqueMarker = Marker(
-  //              point: LatLng(lat, lng),
-  //              width: 45,
-  //              height: 45,
-  //              alignment: Alignment.topCenter,
-  //              key: ValueKey(sektor),
-  //              child: GestureDetector(
-  //                behavior: HitTestBehavior.opaque,
-  //                onTap: () {
-  //                  _popupLayerController.togglePopup(uniqueMarker);
-  //                },
-  //                child: Container(
-  //                  padding: const EdgeInsets.all(4), 
-  //                  decoration: BoxDecoration(
-  //                    color: const Color(0xFF1A1A1A), 
-  //                    shape: BoxShape.circle,         
-  //                    border: Border.all(
-  //                      color: Colors.white,          
-  //                      width: 2.0,                   
-  //                    ),
-  //                    boxShadow: const [
-  //                      BoxShadow(
-  //                        color: Colors.black45,
-  //                        blurRadius: 4,
-  //                        offset: Offset(0, 2),
-  //                      ),
-  //                    ],
-  //                  ),
-  //                  child: Image.asset(
-  //                    'assets/images/$markerImage',
-  //                    fit: BoxFit.contain,
-  //                    errorBuilder: (context, error, stackTrace) {
-  //                      return const Icon(Icons.location_on, color: Colors.red, size: 35);
-  //                    },
-  //                  ),
-  //                ),
-  //              ),
-  //            );
-
-  //            newMarkers.add(uniqueMarker);
-
-  //            flatSektorList.add(sektor);
-  //            markerCount++;
-  //          }
-  //        }
-  //      }
-
-  //      setState(() {
-  //        _indikatorData = flatSektorList;
-  //        _updatedIndikatorMarkers = newMarkers;
-  //      });
-  //    } else {
-  //      _showErrorSnippet("Gagal memuat data indikator (Status: ${response.statusCode})");
-  //    }
-  //  } catch (e) {
-  //    debugPrint("Indikator fetch error: $e");
-  //    _showErrorSnippet("Terjadi kesalahan saat mengambil data indikator.");
-  //  } finally {
-  //    setState(() => _isLoading = false);
-  //  }
-  //}
-
-  /*Future<void> _fetchIndikatorData() async {
+  Future<void> _fetchTkdData() async {
     setState(() {
       _isLoading = true;
-      _indikatorData.clear();
-      _updatedIndikatorMarkers.clear();
+      _tkdData.clear();
+      _allTkdMarkersMasterList.clear();
+      _tkdMarkers.clear();
     });
 
     String kodeWilayah = _selectedRegencyId ?? (_selectedProvinceId ?? "");
-    String url = 'https://geopas.satgasprr.go.id/map/get_indikator?wilayah_kode=$kodeWilayah';
-    debugPrint(url);
+    String url = 'https://geopas.satgasprr.go.id/map/get_anggaran?wilayah_kode=$kodeWilayah';
 
     try {
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
-        final receivePort = ReceivePort();
+        List<dynamic> data = json.decode(response.body);
+        List<Marker> newMarkers = [];
 
-        // Pass ONLY plain primitive strings and ports to prevent thread-sharing errors
-        await Isolate.spawn(
-          parseIndikatorJsonIsolate, // Reference to global helper function
-          {
-            'jsonString': response.body,
-            'sendPort': receivePort.sendPort,
-          },
-        );
+        for (var item in data) {
+          var wilayah = item['wilayah'];
+          if (wilayah == null) continue;
 
-        // Listen to streaming chunks safe on the main UI pipeline
-        await for (var message in receivePort) {
-          if (message == 'DONE') {
-            receivePort.close();
-            break;
-          }
+          // Extracting latitude and longitude safely from the nested wilayah key
+          double? lat = double.tryParse(wilayah['latitude']?.toString() ?? '');
+          double? lng = double.tryParse(wilayah['longitude']?.toString() ?? '');
 
-          if (message is Map && message.containsKey('isolate_error')) {
-            _showErrorSnippet("Error: ${message['isolate_error']}");
-            receivePort.close();
-            break;
-          }
+          if (lat != null && lng != null) {
+            String kondisi = wilayah['kondisi']?.toString() ?? 'Normal';
+            
+            //String markerImage = 'building';
+            //switch (kondisi) {
+            //  case 'Atensi': markerImage += '-yellow.png'; break;
+            //  case 'Mendekati': markerImage += '-blue.png'; break;
+            //  default: markerImage += '-blue.png'; // Fallback default icon asset
+            //}
+            String markerImage = 'building.png';
 
-          if (message is List) {
-            List<Marker> temporaryBatchMarkers = [];
-
-            for (var sektor in message) {
-              double lat = double.parse(sektor['latitude'].toString());
-              double lng = double.parse(sektor['longitude'].toString());
-              String markerImage = _getMarkerImageName(sektor);
-
-              // Create individual visual map markers locally on the Main UI thread
-              late final Marker uniqueMarker;
-              uniqueMarker = Marker(
-                point: LatLng(lat, lng),
-                width: 45,
-                height: 45,
-                alignment: Alignment.topCenter,
-                key: ValueKey(sektor),
+            late final Marker tkdMarker;
+            tkdMarker = Marker(
+              point: LatLng(lat, lng),
+              width: 45,
+              height: 45,
+              alignment: Alignment.topCenter,
+              key: ValueKey(item),
+              child: RepaintBoundary(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => _popupLayerController.togglePopup(uniqueMarker),
+                  // Assuming you use the same popup layering strategy as your indicators
+                  onTap: () => _popupLayerController.togglePopup(tkdMarker),
                   child: Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1A1A1A),
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2.0),
+                      border: Border.all(color: Colors.cyanAccent, width: 2.0),
                       boxShadow: const [
                         BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))
                       ],
@@ -354,42 +222,44 @@ class _MyHomePageState extends State<MyHomePage> {
                     child: Image.asset(
                       'assets/images/$markerImage',
                       fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(Icons.location_on, color: Colors.red, size: 35);
-                      },
+                      errorBuilder: (context, error, stackTrace) => 
+                          const Icon(Icons.account_balance_wallet, color: Colors.greenAccent, size: 30),
                     ),
                   ),
                 ),
-              );
+              ),
+            );
 
-              temporaryBatchMarkers.add(uniqueMarker);
-            }
-
-            // Safely append chunk records progressively to your map layer
-            setState(() {
-              _indikatorData.addAll(message);
-              _updatedIndikatorMarkers.addAll(temporaryBatchMarkers);
-              
-              // Turn off loading animation immediately when the first batch pops into view
-              if (_isLoading) _isLoading = false; 
-            });
+            newMarkers.add(tkdMarker);
           }
         }
+
+        setState(() {
+          _tkdData = data;
+          _allTkdMarkersMasterList = newMarkers;
+          _pruneVisibleMarkers(); // Call immediately to draw markers onto your current view
+        });
       } else {
-        _showErrorSnippet("Gagal memuat data indikator (Status: ${response.statusCode})");
-        setState(() => _isLoading = false);
+        _showErrorSnippet("Gagal memuat data TKD (Status: ${response.statusCode})");
       }
     } catch (e) {
-      debugPrint("Indikator fetch error: $e");
-      _showErrorSnippet("Terjadi kesalahan saat mengambil data indikator.");
+      debugPrint("TKD fetch error: $e");
+      _showErrorSnippet("Terjadi kesalahan saat mengambil data Anggaran/TKD.");
+    } finally {
       setState(() => _isLoading = false);
     }
-  }*/
+  }
 
   Future<void> _fetchIndikatorData() async {
+    if ( (_selectedRegencyId ?? (_selectedProvinceId ?? "")) == '' ) {
+      _showErrorSnippet("Mohon pilih wilayah terlebih dahulu");
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _indikatorData.clear();
+      _allIndikatorMarkersMasterList.clear();
       _updatedIndikatorMarkers.clear();
     });
 
@@ -410,20 +280,26 @@ class _MyHomePageState extends State<MyHomePage> {
           },
         );
 
-        // --- NEW THROTTLED BUFFER VARIABLES ---
+        
         List<dynamic> backloggedData = [];
         List<Marker> backloggedMarkers = [];
         
-        // Track the last time we updated the screen
+        
         DateTime lastUiUpdateTime = DateTime.now();
         Timer? periodicUpdateTimer;
 
-        // Helper function to push backlogged items to the map layout safely
+        
         void flushBufferToUi() {
           if (backloggedMarkers.isNotEmpty) {
             setState(() {
               _indikatorData.addAll(backloggedData);
-              _updatedIndikatorMarkers.addAll(backloggedMarkers);
+              
+              
+              _allIndikatorMarkersMasterList.addAll(backloggedMarkers);
+              
+              
+              _pruneVisibleMarkers();
+              
               if (_isLoading) _isLoading = false;
             });
             backloggedData.clear();
@@ -432,16 +308,16 @@ class _MyHomePageState extends State<MyHomePage> {
           }
         }
 
-        // Start a subtle periodic fallback timer to ensure smooth visual updates even during bursts
+        
         periodicUpdateTimer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
           flushBufferToUi();
         });
-        // --------------------------------------
+        
 
         await for (var message in receivePort) {
           if (message == 'DONE') {
             periodicUpdateTimer.cancel();
-            flushBufferToUi(); // Flush anything left over
+            flushBufferToUi(); 
             receivePort.close();
             break;
           }
@@ -466,21 +342,23 @@ class _MyHomePageState extends State<MyHomePage> {
                 height: 45,
                 alignment: Alignment.topCenter,
                 key: ValueKey(sektor),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _popupLayerController.togglePopup(uniqueMarker),
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2.0),
-                      boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))],
-                    ),
-                    child: Image.asset(
-                      'assets/images/$markerImage',
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.location_on, color: Colors.red, size: 35),
+                child: RepaintBoundary( 
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _popupLayerController.togglePopup(uniqueMarker),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2.0),
+                        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))],
+                      ),
+                      child: Image.asset(
+                        'assets/images/$markerImage',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.location_on, color: Colors.red, size: 35),
+                      ),
                     ),
                   ),
                 ),
@@ -490,7 +368,7 @@ class _MyHomePageState extends State<MyHomePage> {
               backloggedMarkers.add(uniqueMarker);
             }
 
-            // If it's been more than 250ms since the last UI pass, refresh the map markers
+            
             if (DateTime.now().difference(lastUiUpdateTime).inMilliseconds > 250) {
               flushBufferToUi();
             }
@@ -507,9 +385,46 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  void _pruneVisibleMarkers() {
+    
+    if (_mapController.camera == null) return;
+
+    
+    final bounds = _mapController.camera.visibleBounds;
+    
+    
+    
+    final southWest = LatLng(bounds.southWest.latitude - 0.5, bounds.southWest.longitude - 0.5);
+    final northEast = LatLng(bounds.northEast.latitude + 0.5, bounds.northEast.longitude + 0.5);
+
+    setState(() {
+      
+      _updatedIndikatorMarkers = _allIndikatorMarkersMasterList.where((marker) {
+        return marker.point.latitude >= southWest.latitude &&
+               marker.point.latitude <= northEast.latitude &&
+               marker.point.longitude >= southWest.longitude &&
+               marker.point.longitude <= northEast.longitude;
+      }).toList();
+
+      _pekerjaanMarkers = _allPekerjaanMarkersMasterList.where((marker) {
+        return marker.point.latitude >= southWest.latitude &&
+               marker.point.latitude <= northEast.latitude &&
+               marker.point.longitude >= southWest.longitude &&
+               marker.point.longitude <= northEast.longitude;
+      }).toList();
+
+      _tkdMarkers = _allTkdMarkersMasterList.where((marker) {
+        return marker.point.latitude >= southWest.latitude &&
+               marker.point.latitude <= northEast.latitude &&
+               marker.point.longitude >= southWest.longitude &&
+               marker.point.longitude <= northEast.longitude;
+      }).toList();
+    });
+  }
+
   String _getMarkerImageName(Map<String, dynamic> sektor) {
     String indicatorName = sektor['indikator']?['nama'] ?? '';
-    String markerImage = 'help'; // fallback default
+    String markerImage = 'help'; 
 
     if (indicatorName.contains('Kantor')) {
       markerImage = 'building';
@@ -1036,7 +951,7 @@ class _MyHomePageState extends State<MyHomePage> {
         List<Marker> newMarkers = [];
 
         for (var agency in data) {
-          // Access the nested "list_pekerjaan" array
+          
           List<dynamic> projects = agency['list_pekerjaan'] ?? [];
           
           for (var project in projects) {
@@ -1256,7 +1171,7 @@ class _MyHomePageState extends State<MyHomePage> {
       margin: const EdgeInsets.only(bottom: 5),
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
       decoration: BoxDecoration(
-        // Highlight the active tab with the brand blue or a dark wood tone
+        
         color: isActive ? const Color(0xFF22467A) : Colors.transparent,
         borderRadius: BorderRadius.circular(4),
       ),
@@ -1360,7 +1275,7 @@ class _MyHomePageState extends State<MyHomePage> {
           icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
           isExpanded: true,
           style: const TextStyle(color: Colors.white, fontSize: 12),
-          // Iterate through Map entries
+          
           items: items.entries.map((entry) {
             return DropdownMenuItem<String>(
               value: entry.key,   
@@ -1516,6 +1431,10 @@ class _MyHomePageState extends State<MyHomePage> {
         _currentMarkers = newMarkers;
         _isLoading = false;
       });
+    }
+
+    if (_indikatorData.isNotEmpty ) {
+      _fetchIndikatorData();
     }
   }
 
@@ -1679,17 +1598,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     initialZoom: 7.0,
                     onTap: (tapPos, point) => _handleMapTap(point),
                     onPointerHover: (event, point) {
-                      //String? hitCode;
-                      //for (var cp in _activePolygons) {
-                      //  if (_isPointInPolygon(point, cp.polygon.points)) {
-                      //    hitCode = cp.code;
-                      //    break;
-                      //  }
-                      //}
-                      //if (hitCode != _hoveredCode) {
-                      //  setState(() => _hoveredCode = hitCode);
-                      //}
-
                       final now = DateTime.now();
                       if (now.difference(_lastHoverCheck).inMilliseconds < 40) return;
                       _lastHoverCheck = now;
@@ -1703,6 +1611,11 @@ class _MyHomePageState extends State<MyHomePage> {
                       }
                       if (hitCode != _hoveredCode) {
                         setState(() => _hoveredCode = hitCode);
+                      }
+                    },
+                    onPositionChanged: (position, hasGesture) {
+                      if (hasGesture) {
+                        _pruneVisibleMarkers();
                       }
                     },
                   ),
@@ -1731,6 +1644,7 @@ class _MyHomePageState extends State<MyHomePage> {
                               markers: [
                                 ..._pekerjaanMarkers,
                                 ..._updatedIndikatorMarkers,
+                                ..._tkdMarkers,
                               ],
                               popupDisplayOptions: PopupDisplayOptions(
                                 snap: PopupSnap.markerTop, 
@@ -1799,6 +1713,14 @@ class _MyHomePageState extends State<MyHomePage> {
                       onTap: () => setState(() {
                         _currentTileUrl = arcgisSatellite;
                         _showMonitorButton = 'wilayah';
+
+                        _indikatorData.clear();
+                        _allIndikatorMarkersMasterList.clear();
+                        _updatedIndikatorMarkers.clear();
+
+                        _allTkdMarkersMasterList.clear();
+                        _tkdMarkers.clear();
+                        _tkdData.clear();
                       }),
                     ),
                     const SizedBox(height: 16),
@@ -1807,7 +1729,12 @@ class _MyHomePageState extends State<MyHomePage> {
                       label: "Update kondisi (Indikator)",
                       onTap: () {
                         setState(() {
+                          _currentTileUrl = arcgisSatellite;
                           _showMonitorButton = 'update';
+
+                          _allTkdMarkersMasterList.clear();
+                          _tkdMarkers.clear();
+                          _tkdData.clear();
                         });
                         _fetchIndikatorData();
                       },
@@ -1817,6 +1744,16 @@ class _MyHomePageState extends State<MyHomePage> {
                       imagePath: 'assets/images/pekerjaan.png',
                       label: "DalRenduk",
                       onTap: () => setState(() {
+                        setState(() {
+                          _indikatorData.clear();
+                          _allIndikatorMarkersMasterList.clear();
+                          _updatedIndikatorMarkers.clear();
+
+                          _allTkdMarkersMasterList.clear();
+                          _tkdMarkers.clear();
+                          _tkdData.clear();
+                        });
+
                         _currentTileUrl = arcgisDefault;
                         _showMonitorButton = 'pekerjaan'; 
                         _fetchPekerjaanSummary('');
@@ -1827,7 +1764,16 @@ class _MyHomePageState extends State<MyHomePage> {
                     _buildSidebarButton(
                       imagePath: 'assets/images/tkd.png',
                       label: "TKD",
-                      onTap: () => setState(() => _showMonitorButton = 'tkd'),
+                      onTap: () => setState(() {
+                        _fetchTkdData();
+
+                        _indikatorData.clear();
+                        _allIndikatorMarkersMasterList.clear();
+                        _updatedIndikatorMarkers.clear();
+
+                        _showMonitorButton = 'tkd';
+                        _currentTileUrl = arcgisSatellite;
+                      }),
                     ),
                   ],
                 ),
@@ -2292,7 +2238,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                           child: Column(
                             children: [
-                              // Table Header
+                              
                               Container(
                                 color: Colors.white.withOpacity(0.05),
                                 padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
@@ -2325,7 +2271,6 @@ void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
   final SendPort sendPort = params['sendPort'];
 
   try {
-    // Heavy JSON parsing occurs on background thread
     final Map<String, dynamic> decodedData = json.decode(rawJson);
     final List<dynamic> listIndikator = decodedData['list_indikator'] ?? [];
 
@@ -2334,14 +2279,13 @@ void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
     for (var indikator in listIndikator) {
       List<dynamic> listSektor = indikator['list_sektor_terdampak'] ?? [];
       for (var sektor in listSektor) {
-        // Simple verification step
+        
         double? lat = double.tryParse(sektor['latitude']?.toString() ?? '');
         double? lng = double.tryParse(sektor['longitude']?.toString() ?? '');
 
         if (lat != null && lng != null) {
           chunkBatch.add(sektor);
 
-          // Stream chunks of 20 raw maps back to the main thread
           if (chunkBatch.length >= 20) {
             sendPort.send(List.from(chunkBatch));
             chunkBatch.clear();
@@ -2350,13 +2294,12 @@ void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
       }
     }
 
-    // Send any remaining items
     if (chunkBatch.isNotEmpty) {
       sendPort.send(chunkBatch);
     }
   } catch (e) {
     sendPort.send({'isolate_error': e.toString()});
   } finally {
-    sendPort.send('DONE'); // Final closing signal
+    sendPort.send('DONE');
   }
 }
