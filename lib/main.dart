@@ -450,6 +450,7 @@ class _MyHomePageState extends State<MyHomePage> {
       'https://geopas.satgasprr.go.id/map/get_anggaran',
       'https://geopas.satgasprr.go.id/map/get_indikator',
       'https://geopas.satgasprr.go.id/map/get_pekerjaan',
+      'https://geopas.satgasprr.go.id/map/get_wilayah_all',
     ];
 
     try {
@@ -458,6 +459,7 @@ class _MyHomePageState extends State<MyHomePage> {
       for (String url in endpoints) {
         final response = await http.get(Uri.parse(url));
         if (response.statusCode == 200) {
+          debugPrint(response.body);
           final String fileName = _getCleanFileName(url);
           final File file = File('${appDataDir.path}/json_data/$fileName.json');
           
@@ -853,12 +855,6 @@ class _MyHomePageState extends State<MyHomePage> {
               if (wilayahKode != _selectedAreaCode && !wilayahKode.startsWith(prefixWithDot)) {
                 continue;
               }
-            }
-
-            String? sebelumPath = _getSektorFotoPath(sektor['foto_sebelum']);
-            String? sesudahPath = _getSektorFotoPath(sektor['foto_sesudah']);
-            if (sebelumPath == null || sesudahPath == null) {
-              continue;
             }
 
             double lat = double.parse(sektor['latitude'].toString());
@@ -1952,6 +1948,83 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  //Future<void> _loadWilayahPanelData(String parentCode, String parentName) async {
+  //  try {
+  //    setState(() {
+  //      _isLoading = true;
+  //      _currentLevel += 1;
+  //    });
+
+  //    String auth = 'Basic ${base64Encode(utf8.encode('aingExcel:machinegunkelly'))}';
+  //    final response = await http.get(
+  //      Uri.parse('https://geopas.satgasprr.go.id/api/excel/wilayah/${_currentLevel == 4 ? 3 : _currentLevel}/$parentCode'),
+  //      headers: {'Authorization': auth},
+  //    );
+
+  //    if (response.statusCode == 200) {
+  //      List<dynamic> areas = json.decode(response.body);
+  //      setState(() {
+  //        _panelWilayahOptionalData.clear();
+  //        _panelWilayahCounterNormal = 0;
+  //        _panelWilayahCounterMendekati = 0;
+  //        _panelWilayahCounterAtensi = 0;
+          
+  //        _panelWilayahOptionalData.add({
+  //          'kode': '0',
+  //          'nama': 'All',
+  //          'kondisi': 'Normal'
+  //        });
+
+  //        for (var area in areas) {
+  //          if (area['kondisi'] == 'Normal') {
+  //            _panelWilayahCounterNormal += 1;
+  //          } else if(area['kondisi'] == 'Mendekati') {
+  //            _panelWilayahCounterMendekati += 1;
+  //          } else if(area['kondisi'] == 'Atensi') {
+  //            _panelWilayahCounterAtensi += 1;
+  //          } else {
+  //            _panelWilayahCounterNormal += 1;
+  //          }
+
+  //          _panelWilayahOptionalData.add({
+  //            'kode': area['kode'].toString(),
+  //            'nama': area['nama'].toString(),
+  //            'kondisi': area['kondisi']?.toString() ?? 'Normal',
+  //          });
+  //        }
+  //      });  
+
+  //      switch (_currentLevel) {
+  //        case 3:
+  //          setState(() {
+  //            _selectedOptionKabupaten = parentName;
+  //            _selectedRegencyId = parentCode;
+  //          });
+  //        break;
+
+  //        case 4:
+  //          setState(() {
+  //            _selectedOptionKecamatan = parentName;
+  //          });
+  //        break;
+
+  //        default:
+  //      }
+
+  //      _fetchWilayahData(_currentLevel, parentCode);
+
+  //      debugPrint('level now'+_currentLevel.toString());
+
+  //    } else {
+  //      throw Exception();
+  //    }
+  //  } catch (e) {
+  //    _showErrorSnippet("Gagal mengambil data Level $_currentLevel.");
+  //  } finally {
+  //    setState(() => _isLoading = false);
+  //  }
+  //}
+
   Future<void> _loadWilayahPanelData(String parentCode, String parentName) async {
     try {
       setState(() {
@@ -1959,69 +2032,110 @@ class _MyHomePageState extends State<MyHomePage> {
         _currentLevel += 1;
       });
 
-      String auth = 'Basic ${base64Encode(utf8.encode('aingExcel:machinegunkelly'))}';
-      final response = await http.get(
-        Uri.parse('https://geopas.satgasprr.go.id/api/excel/wilayah/${_currentLevel == 4 ? 3 : _currentLevel}/$parentCode'),
-        headers: {'Authorization': auth},
-      );
+      // 1. Define Local Cache File Path
+      final Directory appDataDir = await getApplicationSupportDirectory();
+      final File localCacheFile = File('${appDataDir.path}/json_data/get_wilayah_all.json');
 
-      if (response.statusCode == 200) {
-        List<dynamic> areas = json.decode(response.body);
-        setState(() {
-          _panelWilayahOptionalData.clear();
-          _panelWilayahCounterNormal = 0;
-          _panelWilayahCounterMendekati = 0;
-          _panelWilayahCounterAtensi = 0;
-          
-          _panelWilayahOptionalData.add({
-            'kode': '0',
-            'nama': 'All',
-            'kondisi': 'Normal'
-          });
+      List<dynamic> areas = [];
+      bool isLoadedFromCache = false;
 
-          for (var area in areas) {
-            if (area['kondisi'] == 'Normal') {
-              _panelWilayahCounterNormal += 1;
-            } else if(area['kondisi'] == 'Mendekati') {
-              _panelWilayahCounterMendekati += 1;
-            } else if(area['kondisi'] == 'Atensi') {
-              _panelWilayahCounterAtensi += 1;
-            } else {
-              _panelWilayahCounterNormal += 1;
-            }
+      // 2. Try loading and filtering from Local Cache
+      if (await localCacheFile.exists()) {
+        try {
+          final String jsonString = await localCacheFile.readAsString();
+          final List<dynamic> allCachedData = json.decode(jsonString);
 
-            _panelWilayahOptionalData.add({
-              'kode': area['kode'].toString(),
-              'nama': area['nama'].toString(),
-              'kondisi': area['kondisi']?.toString() ?? 'Normal',
-            });
+          // Filter the flat list matching the parent_kode context logic
+          if (_currentLevel == 1) {
+            areas = allCachedData.where((area) => area['parent_kode'] == null).toList();
+          } else {
+            areas = allCachedData.where((area) {
+              return area['parent_kode']?.toString().trim() == parentCode.trim();
+            }).toList();
           }
-        });  
 
-        switch (_currentLevel) {
-          case 3:
-            setState(() {
-              _selectedOptionKabupaten = parentName;
-              _selectedRegencyId = parentCode;
-            });
-          break;
-
-          case 4:
-            setState(() {
-              _selectedOptionKecamatan = parentName;
-            });
-          break;
-
-          default:
+          isLoadedFromCache = true;
+          debugPrint("Panel read ${areas.length} areas from local JSON cache.");
+        } catch (cacheError) {
+          debugPrint("Panel cache error, falling back to API: $cacheError");
         }
-
-        _fetchWilayahData(_currentLevel, parentCode);
-
-        debugPrint('level now'+_currentLevel.toString());
-
-      } else {
-        throw Exception();
       }
+
+      // 3. Fallback: Hit the Remote API Endpoint if Cache doesn't exist/failed
+      if (!isLoadedFromCache) {
+        debugPrint("Panel cache not found or failed. Directing to remote API call...");
+        String auth = 'Basic ${base64Encode(utf8.encode('aingExcel:machinegunkelly'))}';
+        
+        final response = await http.get(
+          Uri.parse('https://geopas.satgasprr.go.id/api/excel/wilayah/${_currentLevel == 4 ? 3 : _currentLevel}/$parentCode'),
+          headers: {'Authorization': auth},
+        );
+
+        if (response.statusCode == 200) {
+          areas = json.decode(response.body);
+        } else {
+          throw Exception();
+        }
+      }
+
+      // 4. Process the data and update counters/state
+      setState(() {
+        _panelWilayahOptionalData.clear();
+        _panelWilayahCounterNormal = 0;
+        _panelWilayahCounterMendekati = 0;
+        _panelWilayahCounterAtensi = 0;
+        
+        _panelWilayahOptionalData.add({
+          'kode': '0',
+          'nama': 'All',
+          'kondisi': 'Normal'
+        });
+
+        for (var area in areas) {
+          if (area == null) continue;
+          
+          final String kondisi = area['kondisi']?.toString().trim() ?? 'Normal';
+
+          if (kondisi == 'Normal') {
+            _panelWilayahCounterNormal += 1;
+          } else if (kondisi == 'Mendekati') {
+            _panelWilayahCounterMendekati += 1;
+          } else if (kondisi == 'Atensi') {
+            _panelWilayahCounterAtensi += 1;
+          } else {
+            _panelWilayahCounterNormal += 1;
+          }
+
+          _panelWilayahOptionalData.add({
+            'kode': area['kode'].toString(),
+            'nama': area['nama'].toString(),
+            'kondisi': kondisi,
+          });
+        }
+      });  
+
+      switch (_currentLevel) {
+        case 3:
+          setState(() {
+            _selectedOptionKabupaten = parentName;
+            _selectedRegencyId = parentCode;
+          });
+          break;
+
+        case 4:
+          setState(() {
+            _selectedOptionKecamatan = parentName;
+          });
+          break;
+
+        default:
+          break;
+      }
+
+      // Pass processing safely down to the next chain layer
+      _fetchWilayahData(_currentLevel, parentCode);
+      debugPrint('level now ' + _currentLevel.toString());
+
     } catch (e) {
       _showErrorSnippet("Gagal mengambil data Level $_currentLevel.");
     } finally {
@@ -2235,72 +2349,185 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  //Future<void> _fetchWilayahData(int level, String parentCode) async {
+  //  setState(() {
+  //    _selectedAreaCode = parentCode;
+  //    _isLoading = true;
+  //  });
+  //  debugPrint(_selectedAreaCode);
+  //  _currentLevel = level;
+
+  //  List<ClickablePolygon> newPolys = [];
+  //  List<Marker> newMarkers = [];
+  //  bool hasMissingFiles = false;
+
+  //  String auth = 'Basic ${base64Encode(utf8.encode('aingExcel:machinegunkelly'))}';
+
+  //  try {
+  //    final response = await http.get(
+  //      Uri.parse('https://geopas.satgasprr.go.id/api/excel/wilayah/${level == 4 ? 3 : level}/$parentCode'),
+  //      headers: {'Authorization': auth},
+  //    );
+
+  //    if (response.statusCode == 200) {
+  //      List<dynamic> areas = json.decode(response.body);
+
+  //      for (var area in areas) {
+  //        final String kode = area['kode'];
+  //        final String kondisi = area['kondisi']?.toString().trim() ?? 'Normal';
+  //        final String nama = area['nama'] ?? 'Unknown';
+
+  //        try {
+  //          final List<ClickablePolygon> geoData =
+  //              await _parseGeoJson('assets/mapdata/$kode.geojson', kondisi, kode);
+
+  //          if (geoData.isNotEmpty) {
+  //            newPolys.addAll(geoData);
+  //            LatLng centerPoint = geoData.first.center;
+  //            newMarkers.add(
+  //              Marker(
+  //                point: centerPoint,
+  //                width: 120,
+  //                height: 40,
+  //                child: IgnorePointer(
+  //                  child: Text(
+  //                    nama.replaceAll('\n', ' '),
+  //                    textAlign: TextAlign.center,
+  //                    style: TextStyle(
+  //                      color: Colors.white,
+  //                      fontSize: level >= 3 ? 8 : 10,
+  //                      fontWeight: FontWeight.bold,
+  //                      shadows: const [Shadow(blurRadius: 3, color: Colors.black)],
+  //                    ),
+  //                  ),
+  //                ),
+  //              ),
+  //            );
+  //          }
+  //        } catch (e) {
+  //          hasMissingFiles = true;
+  //        }
+  //      }
+
+  //      if (hasMissingFiles) {
+  //        _showErrorSnippet("Beberapa data peta sub-distrik tidak ditemukan.");
+  //      }
+  //    }
+  //  } catch (e) {
+  //    _showErrorSnippet("Gagal mengambil data Level $level.");
+  //  } finally {
+  //    setState(() {
+  //      _activePolygons = newPolys;
+  //      _currentMarkers = newMarkers;
+  //      _isLoading = false;
+  //    });
+  //  }
+
+  //  if (_indikatorData.isNotEmpty ) {
+  //    _fetchIndikatorData();
+  //  }
+  //}
+
   Future<void> _fetchWilayahData(int level, String parentCode) async {
     setState(() {
       _selectedAreaCode = parentCode;
       _isLoading = true;
     });
-    debugPrint(_selectedAreaCode);
+    debugPrint("Fetching Level: $level, Parent: $parentCode");
     _currentLevel = level;
 
     List<ClickablePolygon> newPolys = [];
     List<Marker> newMarkers = [];
     bool hasMissingFiles = false;
 
-    String auth = 'Basic ${base64Encode(utf8.encode('aingExcel:machinegunkelly'))}';
-
     try {
-      final response = await http.get(
-        Uri.parse('https://geopas.satgasprr.go.id/api/excel/wilayah/${level == 4 ? 3 : level}/$parentCode'),
-        headers: {'Authorization': auth},
-      );
+      final Directory appDataDir = await getApplicationSupportDirectory();
+      final File localCacheFile = File('${appDataDir.path}/json_data/get_wilayah_all.json');
 
-      if (response.statusCode == 200) {
-        List<dynamic> areas = json.decode(response.body);
+      List<dynamic> areas = [];
+      bool isLoadedFromCache = false;
 
-        for (var area in areas) {
-          final String kode = area['kode'];
-          final String kondisi = area['kondisi']?.toString().trim() ?? 'Normal';
-          final String nama = area['nama'] ?? 'Unknown';
+      if (await localCacheFile.exists()) {
+        try {
+          final String jsonString = await localCacheFile.readAsString();
+          final List<dynamic> allCachedData = json.decode(jsonString);
 
-          try {
-            final List<ClickablePolygon> geoData =
-                await _parseGeoJson('assets/mapdata/$kode.geojson', kondisi, kode);
+          if (level == 1) {
+            areas = allCachedData.where((area) => area['parent_kode'] == null).toList();
+          } else {
+            areas = allCachedData.where((area) {
+              return area['parent_kode']?.toString().trim() == parentCode.trim();
+            }).toList();
+          }
+          
+          isLoadedFromCache = true;
+          debugPrint("Successfully read and filtered ${areas.length} areas from local JSON cache.");
+        } catch (cacheError) {
+          debugPrint("Error parsing local cache file, falling back to API: $cacheError");
+        }
+      }
 
-            if (geoData.isNotEmpty) {
-              newPolys.addAll(geoData);
-              LatLng centerPoint = geoData.first.center;
-              newMarkers.add(
-                Marker(
-                  point: centerPoint,
-                  width: 120,
-                  height: 40,
-                  child: IgnorePointer(
-                    child: Text(
-                      nama.replaceAll('\n', ' '),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: level >= 3 ? 8 : 10,
-                        fontWeight: FontWeight.bold,
-                        shadows: const [Shadow(blurRadius: 3, color: Colors.black)],
-                      ),
+      if (!isLoadedFromCache) {
+        debugPrint("Cache not found or failed. Directing to remote API call...");
+        String auth = 'Basic ${base64Encode(utf8.encode('aingExcel:machinegunkelly'))}';
+        
+        final response = await http.get(
+          Uri.parse('https://geopas.satgasprr.go.id/api/excel/wilayah/${level == 4 ? 3 : level}/$parentCode'),
+          headers: {'Authorization': auth},
+        );
+
+        if (response.statusCode == 200) {
+          areas = json.decode(response.body);
+        } else {
+          throw HttpException('API responded with code ${response.statusCode}');
+        }
+      }
+
+      for (var area in areas) {
+        if (area == null) continue;
+        final String kode = area['kode'];
+        final String kondisi = area['kondisi']?.toString().trim() ?? 'Normal';
+        final String nama = area['nama'] ?? 'Unknown';
+
+        try {
+          final List<ClickablePolygon> geoData =
+              await _parseGeoJson('assets/mapdata/$kode.geojson', kondisi, kode);
+
+          if (geoData.isNotEmpty) {
+            newPolys.addAll(geoData);
+            LatLng centerPoint = geoData.first.center;
+            newMarkers.add(
+              Marker(
+                point: centerPoint,
+                width: 120,
+                height: 40,
+                child: IgnorePointer(
+                  child: Text(
+                    nama.replaceAll('\n', ' '),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: level >= 3 ? 8 : 10,
+                      fontWeight: FontWeight.bold,
+                      shadows: const [Shadow(blurRadius: 3, color: Colors.black)],
                     ),
                   ),
                 ),
-              );
-            }
-          } catch (e) {
-            hasMissingFiles = true;
+              ),
+            );
           }
-        }
-
-        if (hasMissingFiles) {
-          _showErrorSnippet("Beberapa data peta sub-distrik tidak ditemukan.");
+        } catch (e) {
+          hasMissingFiles = true;
         }
       }
+
+      if (hasMissingFiles) {
+        _showErrorSnippet("Beberapa data peta sub-distrik tidak ditemukan.");
+      }
+
     } catch (e) {
-      _showErrorSnippet("Gagal mengambil data Level $level.");
+      debugPrint("Fetch execution failed error: $e");
+      _showErrorSnippet("Gagal mengambil data Wilayah Level $level.");
     } finally {
       setState(() {
         _activePolygons = newPolys;
@@ -2309,7 +2536,7 @@ class _MyHomePageState extends State<MyHomePage> {
       });
     }
 
-    if (_indikatorData.isNotEmpty ) {
+    if (_indikatorData.isNotEmpty) {
       _fetchIndikatorData();
     }
   }
