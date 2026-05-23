@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -129,7 +130,6 @@ class AppImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // If the path contains a Windows drive letter (like C:\), load from File System
     if (path.contains(':\\') || path.startsWith('\\')) {
       return Image.file(
         File(path),
@@ -141,7 +141,6 @@ class AppImage extends StatelessWidget {
       );
     }
     
-    // Otherwise, fallback safely to standard app bundle asset resource
     return Image.asset(
       path,
       width: width,
@@ -222,25 +221,30 @@ class _MyHomePageState extends State<MyHomePage> {
     _initAppDataPath();
   }
 
+  int _lngToTileX(double lng, int zoom) {
+    return ((lng + 180.0) / 360.0 * math.pow(2, zoom)).floor();
+  }
+
+  int _latToTileY(double lat, int zoom) {
+    final double latRad = lat * math.pi / 180.0;
+    return ((1.0 - math.log(math.tan(latRad) + 1.0 / math.cos(latRad)) / math.pi) / 2.0 * math.pow(2, zoom)).floor();
+  }
+
   String? _getSektorFotoPath(String? fotoFileName) {
-    // If the file name value from the JSON payload is null or completely empty, return null
     if (fotoFileName == null || fotoFileName.trim().isEmpty) {
       return null;
     }
 
     if (_appDataPath != null) {
-      // Construct the direct path targeting your unzipped AppData assets folder
       final String relativePath = 'assets/$fotoFileName';
       final String fullLocalPath = '$_appDataPath/$relativePath'.replaceAll('/', Platform.pathSeparator).replaceAll('\\', Platform.pathSeparator);
 
       if (File(fullLocalPath).existsSync()) {
-        debugPrint('📸 🟢 [FOTO CACHE HIT]: Found local photo path -> $fullLocalPath');
         return fullLocalPath;
       }
     }
 
-    debugPrint('📸 ⚡ [FOTO CACHE MISS]: Local photo file not found -> $fotoFileName');
-    return null; // Return null if it hasn't been downloaded or doesn't exist
+    return null;
   }
 
   String _getAssetPath(String relativePath) {
@@ -253,8 +257,7 @@ class _MyHomePageState extends State<MyHomePage> {
         return fullLocalPath;
       }
     }
-    
-    //debugPrint('$_appDataPath/$relativePath');
+   
     return relativePath;
   }
 
@@ -285,7 +288,6 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  // Download Button Trigger: Fetches live payloads manually and caches them into AppData
   Future<void> _downloadAllJson() async {
     setState(() => _isLoading = true);
     
@@ -296,7 +298,6 @@ class _MyHomePageState extends State<MyHomePage> {
     ];
 
     try {
-      // Maps directly to AppData\Roaming\ on Windows
       final Directory appDataDir = await getApplicationSupportDirectory();
       
       for (String url in endpoints) {
@@ -319,16 +320,13 @@ class _MyHomePageState extends State<MyHomePage> {
         for (final ArchiveFile file in archive) {
           final String filename = file.name;
           
-          // Construct destination targeting AppData directory
           final String localPath = '${appDataDir.path}/$filename';
           final File outFile = File(localPath);
 
           if (file.isFile) {
             await outFile.parent.create(recursive: true);
             await outFile.writeAsBytes(file.content as List<int>);
-            debugPrint('📂 Extracted asset: ${outFile.path}');
           } else {
-            // If it's a directory item entry, ensure directory tree is created
             await Directory(localPath).create(recursive: true);
           }
         }
@@ -353,24 +351,18 @@ class _MyHomePageState extends State<MyHomePage> {
     final Map<String, dynamic> wilayah = item['wilayah'] ?? {};
     final List<dynamic> alokasiList = item['list_alokasi'] ?? [];
 
-    // 1. Calculate total nominal dynamically from raw JSON numbers
     double totalNominalAlokasi = 0.0;
     for (var alokasi in alokasiList) {
       totalNominalAlokasi += double.tryParse(alokasi['nominal']?.toString() ?? '0') ?? 0.0;
     }
 
-    // 2. Updated Utility: Returns the raw number digits formatted with standard commas
     String formatRupiahCurrency(dynamic val) {
       if (val == null) return "Rp 0";
-      
-      // If you want standard readable formatting (e.g., Rp 917,818,343,000)
+    
       double numericValue = double.tryParse(val.toString()) ?? 0.0;
       RegExp reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
       String Function(Match) matchFunc = (Match match) => '${match[1]},';
       return "Rp ${numericValue.toStringAsFixed(0).replaceAllMapped(reg, matchFunc)}";
-
-      // ALTERNATIVE: Un-comment the line below if you want completely raw unformatted digits (e.g., Rp 917818343000)
-      // return "Rp ${val.toString()}";
     }
 
     return Container(
@@ -542,7 +534,7 @@ class _MyHomePageState extends State<MyHomePage> {
       //List<dynamic> data = json.decode(response.body);
       //List<Marker> newMarkers = [];
 
-      final String jsonBody = await _fetchJsonData(url); // Uses cache, cancels api call if true
+      final String jsonBody = await _fetchJsonData(url);
       List<dynamic> data = json.decode(jsonBody);
       List<Marker> newMarkers = [];
 
@@ -575,7 +567,6 @@ class _MyHomePageState extends State<MyHomePage> {
             child: RepaintBoundary(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                // Assuming you use the same popup layering strategy as your indicators
                 onTap: () => _popupLayerController.togglePopup(tkdMarker),
                 child: Container(
                   padding: const EdgeInsets.all(4),
@@ -644,7 +635,7 @@ class _MyHomePageState extends State<MyHomePage> {
       //  },
       //);
 
-      final String jsonBody = await _fetchJsonData(url); // Uses cache, cancels api call if true
+      final String jsonBody = await _fetchJsonData(url);
       final receivePort = ReceivePort();
 
       await Isolate.spawn(
@@ -960,19 +951,16 @@ class _MyHomePageState extends State<MyHomePage> {
         builder: (BuildContext context) {
           return Dialog(
             backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.all(16), // Gives a padding margin from the monitor window edges
+            insetPadding: const EdgeInsets.all(16), 
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Click outside the image container to close the modal layout view
                 GestureDetector(
                   onTap: () => Navigator.of(context).pop(),
                   child: Container(color: Colors.transparent),
                 ),
-                
-                // The Main Card Container
                 Container(
-                  width: 800, // Maximum bounding layout width on desktop view monitors
+                  width: 800, 
                   height: 600,
                   decoration: BoxDecoration(
                     color: const Color(0xFF1a2c42),
@@ -982,7 +970,6 @@ class _MyHomePageState extends State<MyHomePage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Modal Window Header Layout Banner
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         child: Row(
@@ -1001,7 +988,6 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                       const Divider(color: Colors.white12, height: 1),
                       
-                      // Expandable Image Content Section
                       Flexible(
                         child: Padding(
                           padding: const EdgeInsets.all(16),
@@ -1009,7 +995,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             borderRadius: BorderRadius.circular(8),
                             child: AppImage(
                               imagePath,
-                              fit: BoxFit.contain, // Fits neatly inside the view boundary constraints without clipping paths
+                              fit: BoxFit.contain,
                             ),
                           ),
                         ),
@@ -1110,7 +1096,6 @@ class _MyHomePageState extends State<MyHomePage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      // Left Side: Sebelum (Before) image preview action container wrapper
                       Expanded(
                         child: Center(
                           child: sebelumPath != null
@@ -1137,11 +1122,7 @@ class _MyHomePageState extends State<MyHomePage> {
                               : const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
                         ),
                       ),
-
-                      // Center Divider Arrow Icon
                       Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2), size: 16),
-
-                      // Right Side: Sesudah (After) image preview action container wrapper
                       Expanded(
                         child: Center(
                           child: sesudahPath != null
@@ -1447,7 +1428,7 @@ class _MyHomePageState extends State<MyHomePage> {
       //List<Marker> newMarkers = [];
 
       final String url = 'https://geopas.satgasprr.go.id/map/get_pekerjaan?wilayah_kode=$kode';
-      final String jsonBody = await _fetchJsonData(url); // Uses cache, cancels api call if true
+      final String jsonBody = await _fetchJsonData(url);
       
       List<dynamic> data = json.decode(jsonBody);
       List<Marker> newMarkers = [];
@@ -2114,9 +2095,18 @@ class _MyHomePageState extends State<MyHomePage> {
                     },
                   ),
                   children: [
+                    //TileLayer(
+                    //  urlTemplate: _currentTileUrl,
+                    //  tileProvider: CachedTileProvider(store: widget.cacheStore),
+                    //),
                     TileLayer(
                       urlTemplate: _currentTileUrl,
-                      tileProvider: CachedTileProvider(store: widget.cacheStore),
+                      userAgentPackageName: 'com.satgasprr.monitor_bencana_d',
+                      tileProvider: CachedTileProvider(
+                        store: widget.cacheStore,
+                      ),
+                      maxNativeZoom: 16, 
+                      maxZoom: 18,
                     ),
                     PolygonLayer(
                       polygons: _activePolygons.map((cp) {
@@ -2171,15 +2161,12 @@ class _MyHomePageState extends State<MyHomePage> {
                             popupDisplayOptions: PopupDisplayOptions(
                               snap: PopupSnap.markerTop, 
                               builder: (BuildContext context, Marker marker) {
-                                // 1. Extract payload Map data safely via the marker's ValueKey wrapper
                                 final dataPayload = (marker.key as ValueKey).value as Map<String, dynamic>;
                                 
-                                // 2. Route payload to the TKD dual-section card UI if it contains list_alokasi
                                 if (dataPayload.containsKey('list_alokasi')) {
                                   return _buildTkdPopupCard(context, dataPayload);
                                 }
                                 
-                                // 3. Fallback routing for your existing disaster indicators or generic markers
                                 if (dataPayload.containsKey('list_sektor_terdampak') || dataPayload.containsKey('indikator')) {
                                   return _buildIndikatorPopup(marker);
                                 } else {
@@ -2675,7 +2662,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header Block
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -2700,7 +2686,6 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // Dropdown Selectors Row Block
                       Row(
                         children: [
                           Expanded(
@@ -2758,7 +2743,6 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Main Table Layout Content Container
                       Expanded(
                         child: Container(
                           decoration: BoxDecoration(
@@ -2767,7 +2751,6 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                           child: Builder(
                             builder: (context) {
-                              // 1. Dynamic filtering phase based on state constraints
                               List<dynamic> displayList = [];
                               if (_selectedOptionProv == null || _selectedOptionProv == 'All' || _selectedOptionProv == '') {
                                 displayList = List.from(_tkdData);
@@ -2779,7 +2762,6 @@ class _MyHomePageState extends State<MyHomePage> {
                                 }).toList();
                               }
 
-                              // Number Thousand Comma Regex Formatter Utility
                               String formatRawNum(dynamic val) {
                                 if (val == null) return "0";
                                 double numVal = double.tryParse(val.toString()) ?? 0.0;
@@ -2789,7 +2771,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
                               return Column(
                                 children: [
-                                  // Table Static Sticky Header
                                   Container(
                                     color: Colors.white.withOpacity(0.05),
                                     padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
@@ -2804,7 +2785,6 @@ class _MyHomePageState extends State<MyHomePage> {
                                     ),
                                   ),
                                   
-                                  // Scrollable Table Rows System
                                   Expanded(
                                     child: displayList.isEmpty
                                         ? const Center(
