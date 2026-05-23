@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -166,6 +165,7 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Marker> _allPekerjaanMarkersMasterList = [];
 
   List<ClickablePolygon> _activePolygons = [];
+  String? _selectedAreaCode;
   String? _selectedProvinceId;
   String? _selectedRegencyId;
   String? _hoveredCode;
@@ -213,6 +213,8 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  List<Map<String, dynamic>> _panelIndikatorData = [];
+
   @override
   void initState() {
     super.initState();
@@ -221,13 +223,166 @@ class _MyHomePageState extends State<MyHomePage> {
     _initAppDataPath();
   }
 
-  int _lngToTileX(double lng, int zoom) {
-    return ((lng + 180.0) / 360.0 * math.pow(2, zoom)).floor();
+  void _updatePanelIndikatorFromRawJson(String jsonString) {
+    try {
+      final Map<String, dynamic> data = json.decode(jsonString);
+      
+      final List<dynamic> listIndikator = data['list_indikator'] ?? [];
+      
+      final Map<String, Map<String, int>> aggregatedData = {};
+
+      for (var indikator in listIndikator) {
+        if (indikator == null || indikator["nama"] == null) continue;
+        String categoryName = indikator["nama"].toString();
+        
+        final List<dynamic> listSektor = indikator["list_sektor_terdampak"] ?? [];
+
+        for (var sektor in listSektor) {
+          if (sektor == null) continue;
+
+          final Map<String, dynamic>? wilayah = sektor["wilayah"];
+          final String wilayahKode = (wilayah != null && wilayah["kode"] != null) 
+              ? wilayah["kode"].toString().trim() 
+              : "";
+
+          if (_selectedProvinceId != null && _selectedProvinceId != '0' && _selectedProvinceId!.isNotEmpty) {
+            String prefixWithDot = "$_selectedProvinceId.";
+            
+            if (wilayahKode != _selectedProvinceId && !wilayahKode.startsWith(prefixWithDot)) {
+              continue;
+            }
+          }
+
+          if (!aggregatedData.containsKey(categoryName)) {
+            aggregatedData[categoryName] = {
+              "total": 0,
+              "normal": 0,
+              "mendekati": 0,
+              "atensi": 0,
+            };
+          }
+
+          String rawStatus = (sektor["status"] ?? "").toString().trim().toLowerCase();
+
+          aggregatedData[categoryName]!["total"] = aggregatedData[categoryName]!["total"]! + 1;
+
+          if (rawStatus == "normal") {
+            aggregatedData[categoryName]!["normal"] = aggregatedData[categoryName]!["normal"]! + 1;
+          } else if (rawStatus == "mendekati" || rawStatus == "sedang ditangani") {
+            aggregatedData[categoryName]!["mendekati"] = aggregatedData[categoryName]!["mendekati"]! + 1;
+          } else if (rawStatus == "atensi" || rawStatus == "belum ditangani") {
+            aggregatedData[categoryName]!["atensi"] = aggregatedData[categoryName]!["atensi"]! + 1;
+          }
+        }
+      }
+
+      final List<Map<String, dynamic>> parsedIndicators = [];
+
+      aggregatedData.forEach((categoryName, counts) {
+        int total = counts["total"]!;
+        int normal = counts["normal"]!;
+        
+        double pct = total > 0 ? (normal / total) * 100 : 0.0;
+        String formattedPercentage = pct == 100.0 ? "100%" : "${pct.toStringAsFixed(2)}%";
+
+        IconData dynamicIcon = Icons.business;
+        Color iconColor = const Color(0xFF4DE1B6);
+
+        String lowercaseTitle = categoryName.toLowerCase();
+        if (lowercaseTitle.contains("desa") || lowercaseTitle.contains("kelurahan")) {
+          dynamicIcon = Icons.domain;
+          iconColor = const Color(0xFF5A86E9);
+        } else if (lowercaseTitle.contains("lumpur") || lowercaseTitle.contains("bersih")) {
+          dynamicIcon = Icons.cleaning_services;
+          iconColor = const Color(0xFF3263E3);
+        } else if (lowercaseTitle.contains("faskes") || lowercaseTitle.contains("rs") || lowercaseTitle.contains("klinik")) {
+          dynamicIcon = Icons.favorite;
+          iconColor = lowercaseTitle.contains("klinik") ? const Color(0xFFFABE2C) : const Color(0xFF4279F4);
+        } else if (['paud', 'tk', 'sd', 'smp', 'sma', 'sekolah'].any(lowercaseTitle.contains)) {
+          dynamicIcon = Icons.school;
+          iconColor = lowercaseTitle.contains("paud") ? const Color(0xFF26A69A) : const Color(0xFF3B72E2);
+        }
+
+        parsedIndicators.add({
+          "title": categoryName,
+          "icon": dynamicIcon,
+          "color": iconColor,
+          "total": total.toString(),
+          "normal": normal.toString(),
+          "mendekati": counts["mendekati"]!.toString(),
+          "atensi": counts["atensi"]!.toString(),
+          "percentage": formattedPercentage,
+        });
+      });
+
+      setState(() {
+        _panelIndikatorData.clear();
+        _panelIndikatorData.addAll(parsedIndicators);
+      });
+    } catch (e) {
+      debugPrint("Error parsing indicator aggregation view: $e");
+    } finally {
+
+    }
   }
 
-  int _latToTileY(double lat, int zoom) {
-    final double latRad = lat * math.pi / 180.0;
-    return ((1.0 - math.log(math.tan(latRad) + 1.0 / math.cos(latRad)) / math.pi) / 2.0 * math.pow(2, zoom)).floor();
+  Widget _buildProgressIndicatorRow(Map<String, dynamic> item) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      item['icon'] as IconData, 
+                      color: item['color'] as Color, 
+                      size: 22,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        item['title']!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              Text(
+                "Total : ${item['total']} | Normal : ${item['normal']} | Mendekati : ${item['mendekati']} | Atensi : ${item['atensi']}",
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          
+          Text(
+            item['percentage']!,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String? _getSektorFotoPath(String? fotoFileName) {
@@ -382,7 +537,6 @@ class _MyHomePageState extends State<MyHomePage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ==================== TOP SECTION ====================
             Container(
               padding: const EdgeInsets.all(12),
               color: const Color(0xFF262626),
@@ -431,7 +585,6 @@ class _MyHomePageState extends State<MyHomePage> {
             
             Container(height: 1, color: Colors.cyanAccent.withOpacity(0.3)),
 
-            // ==================== MIDDLE SECTION ====================
             const Padding(
               padding: EdgeInsets.only(left: 12, top: 10, bottom: 4),
               child: Text(
@@ -476,7 +629,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
             ),
 
-            // ==================== BOTTOM SECTION ====================
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               color: const Color(0xFF1E1E1E),
@@ -542,19 +694,11 @@ class _MyHomePageState extends State<MyHomePage> {
         var wilayah = item['wilayah'];
         if (wilayah == null) continue;
 
-        // Extracting latitude and longitude safely from the nested wilayah key
         double? lat = double.tryParse(wilayah['latitude']?.toString() ?? '');
         double? lng = double.tryParse(wilayah['longitude']?.toString() ?? '');
 
         if (lat != null && lng != null) {
           String kondisi = wilayah['kondisi']?.toString() ?? 'Normal';
-          
-          //String markerImage = 'building';
-          //switch (kondisi) {
-          //  case 'Atensi': markerImage += '-yellow.png'; break;
-          //  case 'Mendekati': markerImage += '-blue.png'; break;
-          //  default: markerImage += '-blue.png'; // Fallback default icon asset
-          //}
           String markerImage = 'building.png';
 
           late final Marker tkdMarker;
@@ -636,6 +780,8 @@ class _MyHomePageState extends State<MyHomePage> {
       //);
 
       final String jsonBody = await _fetchJsonData(url);
+      _updatePanelIndikatorFromRawJson(jsonBody);
+
       final receivePort = ReceivePort();
 
       await Isolate.spawn(
@@ -696,6 +842,25 @@ class _MyHomePageState extends State<MyHomePage> {
 
         if (message is List) {
           for (var sektor in message) {
+            final Map<String, dynamic>? wilayah = sektor['wilayah'];
+            final String wilayahKode = (wilayah != null && wilayah['kode'] != null)
+                ? wilayah['kode'].toString().trim()
+                : "";
+
+            if (_selectedAreaCode != null && _selectedAreaCode!.isNotEmpty) {
+              String prefixWithDot = "$_selectedAreaCode.";
+              
+              if (wilayahKode != _selectedAreaCode && !wilayahKode.startsWith(prefixWithDot)) {
+                continue;
+              }
+            }
+
+            String? sebelumPath = _getSektorFotoPath(sektor['foto_sebelum']);
+            String? sesudahPath = _getSektorFotoPath(sektor['foto_sesudah']);
+            if (sebelumPath == null || sesudahPath == null) {
+              continue;
+            }
+
             double lat = double.parse(sektor['latitude'].toString());
             double lng = double.parse(sektor['longitude'].toString());
             String markerImage = _getMarkerImageName(sektor);
@@ -949,62 +1114,99 @@ class _MyHomePageState extends State<MyHomePage> {
       showDialog(
         context: context,
         builder: (BuildContext context) {
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.all(16), 
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Container(color: Colors.transparent),
-                ),
-                Container(
-                  width: 800, 
-                  height: 600,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1a2c42),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white12),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              title,
-                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.close, color: Colors.white60, size: 20),
-                              onPressed: () => Navigator.of(context).pop(),
-                            ),
-                          ],
-                        ),
+          bool isExpanded = false;
+
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.all(16), 
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Container(color: Colors.transparent),
+                    ),
+                    
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      width: isExpanded ? MediaQuery.of(context).size.width * 0.95 : 800, 
+                      height: isExpanded ? MediaQuery.of(context).size.height * 0.90 : 600,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1a2c42),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white12),
                       ),
-                      const Divider(color: Colors.white12, height: 1),
-                      
-                      Flexible(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: AppImage(
-                              imagePath,
-                              fit: BoxFit.contain,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white, 
+                                      fontSize: 14, 
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  isExpanded ? "Klik foto untuk mengecilkan" : "Klik foto untuk memperbesar",
+                                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.close, color: Colors.white60, size: 20),
+                                  onPressed: () => Navigator.of(context).pop(),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
+                          const Divider(color: Colors.white12, height: 1),
+                          
+                          Flexible(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: GestureDetector(
+                                onTap: () {
+                                  setDialogState(() {
+                                    isExpanded = !isExpanded;
+                                  });
+                                },
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: AnimatedSize(
+                                      duration: const Duration(milliseconds: 300),
+                                      curve: Curves.easeInOut,
+                                      child: AppImage(
+                                        imagePath,
+                                        fit: isExpanded ? BoxFit.contain : BoxFit.cover,
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           );
         },
       );
@@ -1100,26 +1302,27 @@ class _MyHomePageState extends State<MyHomePage> {
                         child: Center(
                           child: sebelumPath != null
                               ? InkWell(
-                                  borderRadius: BorderRadius.circular(4),
-                                  onTap: () => _showLargeImageView("Foto Kondisi Sebelum", sebelumPath),
-                                  child: Tooltip(
-                                    message: "Klik untuk memperbesar",
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(4),
-                                      child: AppImage(
-                                        sebelumPath,
-                                        width: 100,
-                                        height: 70,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) => const Text(
-                                          "Gagal Memuat Gambar", 
-                                          style: TextStyle(color: Colors.redAccent, fontSize: 11)
-                                        ),
+                                borderRadius: BorderRadius.circular(4),
+                                onTap: () => _showLargeImageView("Foto Kondisi Sebelum", sebelumPath),
+                                child: Tooltip(
+                                  message: "Klik untuk memperbesar",
+                                  child: 
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: AppImage(
+                                      sebelumPath,
+                                      width: 100,
+                                      height: 70,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => const Text(
+                                        "Gagal Memuat Gambar", 
+                                        style: TextStyle(color: Colors.redAccent, fontSize: 11)
                                       ),
                                     ),
                                   ),
-                                )
-                              : const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                                ),
+                              )
+                            : const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
                         ),
                       ),
                       Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2), size: 16),
@@ -1159,6 +1362,184 @@ class _MyHomePageState extends State<MyHomePage> {
                 _buildMetaRow("Status", status),
                 _buildMetaRow("Kondisi Awal", kondisiAwal),
                 _buildMetaRow("Keterangan", keterangan),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 4, 
+            right: 4,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+              tooltip: 'Tutup',
+              onPressed: () {
+                _popupLayerController.hideAllPopups();
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDalrendukPopup(Marker marker) {
+    final sektor = (marker.key as ValueKey).value as Map<String, dynamic>;
+
+    String namaWilayah = 
+      sektor['wilayah']['parent']['parent']['nama'] + ' - ' +sektor['wilayah']['parent']['nama'] + ' - ' + sektor['wilayah']['nama']
+    ;
+    String namaSektor = sektor['nama'] ?? '-';
+    String formatRupiah(dynamic rawValue) {
+      if (rawValue == null) return 'Rp. 0';
+      
+      String digitsOnly = rawValue.toString().replaceAll(RegExp(r'[^0-9]'), '');
+      if (digitsOnly.isEmpty) return 'Rp. 0';
+      
+      final intValue = int.tryParse(digitsOnly) ?? 0;
+      
+      final RegExp regex = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+      String formatted = intValue.toString().replaceAllMapped(regex, (Match m) => '${m[1]}.');
+      
+      return 'Rp. $formatted';
+    }
+
+    String nominal = formatRupiah(sektor['nominal']);
+
+    String markerImage = '';
+    if (sektor['indikator']['nama'].contains('Kantor')) {
+        markerImage = 'building';
+    } else if (sektor['indikator']['nama'].contains('Faskes')) {
+        markerImage = 'health';
+    } else if (
+        sektor['indikator']['nama'].contains('PAUD') ||
+        sektor['indikator']['nama'].contains('TK') ||
+        sektor['indikator']['nama'].contains('SD') ||
+        sektor['indikator']['nama'].contains('SMP') ||
+        sektor['indikator']['nama'].contains('SMA/SMK') ||
+        sektor['indikator']['nama'].contains('Madrasah/Ponpes')
+      ) {
+        markerImage = 'school';
+    } else if (sektor['indikator']['nama'].contains('Jalan')) {
+        markerImage = 'road';
+    } else if (sektor['indikator']['nama'].contains('Jembatan')) {
+        markerImage = 'bride';
+    } else if (sektor['indikator']['nama'].contains('Kelistrikan')) {
+        markerImage = 'electric';
+    } else if (sektor['indikator']['nama'].contains('PDAM/SPAM')) {
+        markerImage = 'water';
+    } else if (sektor['indikator']['nama'].contains('Gedung Rumah Ibadah')) {
+        markerImage = 'religion';
+    } else if (sektor['indikator']['nama'].contains('Sungai')) {
+        markerImage = 'river';
+    } else if (
+        sektor['indikator']['nama'].contains('Huntara') ||
+        sektor['indikator']['nama'].contains('Huntap')
+      ) {
+        markerImage = 'home';
+    } else if (sektor['indikator']['nama'].contains('Pengungsian')) {
+        markerImage = 'homes';
+    } else if (
+        sektor['indikator']['nama'].contains('toko diluar pasar') ||
+        sektor['indikator']['nama'].contains('Hotel/Penginapan')
+      ) {
+        markerImage = 'building';
+    } else if (sektor['indikator']['nama'].contains('SPBU')) {
+        markerImage = 'gas_station';
+    } else if (sektor['indikator']['nama'].contains('Gas LPG')) {
+        markerImage = 'gas';
+    } else if (
+        sektor['indikator']['nama'].contains('Gedung/Sarpras Pasar') ||
+        sektor['indikator']['nama'].contains('Gedung/Sarpras Resto/Warung/Kafe/kedai') ||
+        sektor['indikator']['nama'].contains('Koperasi')
+      ) {
+        markerImage = 'store';
+    } else if (sektor['indikator']['nama'].contains('INTERNET')) {
+        markerImage = 'help';
+    } else if (
+        sektor['indikator']['nama'].contains('Persawahan') ||
+        sektor['indikator']['nama'].contains('Perikanan (Tambak)')
+      ) {
+        markerImage = 'river';
+    } else if (
+        sektor['indikator']['nama'].contains('Pembersihan lumpur') ||
+        sektor['indikator']['nama'].contains('DTH')
+      ) {
+        markerImage = 'help';
+    }
+    markerImage += '.png';
+
+    return Container(
+      width: 320,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(blurRadius: 12, color: Colors.black, offset: Offset(0, 4))
+        ],
+      ),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    AppImage(
+                      _getAssetPath('assets/icons/$markerImage'),
+                      width: 20,
+                      height: 20,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(Icons.assignment, color: Colors.tealAccent, size: 20);
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        namaWilayah,
+                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(color: Colors.white24, height: 1),
+                const SizedBox(height: 12),
+                Container(
+                  child: Text(
+                    namaSektor,
+                    style: const TextStyle(color: Color(0xFF90B6D9), fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Divider(color: Colors.white24, height: 1),
+                const SizedBox(height: 12),
+                Container(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Nominal Pekerjaan:',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        nominal,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
               ],
             ),
           ),
@@ -1234,10 +1615,10 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget _buildPekerjaanList() {
     return ListView.separated(
       controller: _pekerjaanScrollController,
-      itemCount: _pekerjaanData.length,
+      itemCount: _pekerjaanDalrendukData.length,
       separatorBuilder: (_, __) => const SizedBox(height: 20),
       itemBuilder: (context, index) {
-        final header = _pekerjaanData[index];
+        final header = _pekerjaanDalrendukData[index];
         final List listPekerjaan = header['list_pekerjaan'] ?? [];
         
         return MouseRegion(
@@ -1278,9 +1659,9 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Widget _buildPekerjaanDetail() {
-    if (_pekerjaanData.isEmpty) return const SizedBox();
+    if (_pekerjaanDalrendukData.isEmpty) return const SizedBox();
 
-    final selectedHeader = _pekerjaanData[_selectedPekerjaanIndex];
+    final selectedHeader = _pekerjaanDalrendukData[_selectedPekerjaanIndex];
     final List listPekerjaan = selectedHeader['list_pekerjaan'] ?? [];
 
     if (listPekerjaan.isEmpty) {
@@ -1416,6 +1797,9 @@ class _MyHomePageState extends State<MyHomePage> {
   List<dynamic> _pekerjaanData = [];
   List<Marker> _pekerjaanMarkers = [];
 
+  List<dynamic> _pekerjaanDalrendukData = [];
+  List<Marker> _pekerjaanDalrendukMarkers = [];
+
   Future<void> _fetchPekerjaanSummary(String kode) async {
     setState(() => _isLoading = true);
 
@@ -1434,10 +1818,22 @@ class _MyHomePageState extends State<MyHomePage> {
       List<Marker> newMarkers = [];
 
       for (var agency in data) {
-        
         List<dynamic> projects = agency['list_pekerjaan'] ?? [];
         
         for (var project in projects) {
+          final Map<String, dynamic>? wilayah = project['wilayah'];
+          final String wilayahKode = (wilayah != null && wilayah['kode'] != null)
+              ? wilayah['kode'].toString().trim()
+              : "";
+
+          if (_selectedAreaCode != null && _selectedAreaCode!.isNotEmpty) {
+            String prefixWithDot = "$_selectedAreaCode.";
+            
+            if (wilayahKode != _selectedAreaCode && !wilayahKode.startsWith(prefixWithDot)) {
+              continue;
+            }
+          }
+
           double? lat = double.tryParse(project['latitude']?.toString() ?? '');
           double? lng = double.tryParse(project['longitude']?.toString() ?? '');
 
@@ -1545,8 +1941,8 @@ class _MyHomePageState extends State<MyHomePage> {
       }
 
       setState(() {
-        _pekerjaanData = List<Map<String, dynamic>>.from(data);
-        _pekerjaanMarkers = newMarkers; 
+        _pekerjaanDalrendukData = List<Map<String, dynamic>>.from(data);
+        _pekerjaanDalrendukMarkers = newMarkers; 
         _selectedPekerjaanIndex = 0;
       });
     } catch (e) {
@@ -1688,6 +2084,7 @@ class _MyHomePageState extends State<MyHomePage> {
       _fetchPekerjaanSummary('');
     }
 
+    debugPrint("$_isShowPekerjaanPanel | $_showMonitorButton");
     setState(() {
       _isShowMonitorWilayahPanel = _showMonitorButton == 'wilayah';
       _isShowUpdatePanel = _showMonitorButton == 'update';
@@ -1839,7 +2236,11 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _fetchWilayahData(int level, String parentCode) async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _selectedAreaCode = parentCode;
+      _isLoading = true;
+    });
+    debugPrint(_selectedAreaCode);
     _currentLevel = level;
 
     List<ClickablePolygon> newPolys = [];
@@ -1945,6 +2346,21 @@ class _MyHomePageState extends State<MyHomePage> {
       _loadInitialData();
       _mapController.move(const LatLng(1.5000, 99.0000), 7.0);
     }
+
+    if (_selectedAreaCode!.isEmpty) return;
+
+    List<String> parts = _selectedAreaCode!.split('.');
+
+
+    setState(() {
+      if (parts.length > 1) {
+        parts.removeLast();
+        _selectedAreaCode = parts.join('.');
+      } else {
+        _selectedAreaCode = '';
+      }
+    });
+    debugPrint(_selectedAreaCode);
   }
 
   void _handleMapTap(LatLng point) {
@@ -2155,6 +2571,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             popupController: _popupLayerController,
                             markers: [
                               ..._pekerjaanMarkers,
+                              ..._pekerjaanDalrendukMarkers,
                               ..._updatedIndikatorMarkers,
                               ..._tkdMarkers,
                             ],
@@ -2167,10 +2584,10 @@ class _MyHomePageState extends State<MyHomePage> {
                                   return _buildTkdPopupCard(context, dataPayload);
                                 }
                                 
-                                if (dataPayload.containsKey('list_sektor_terdampak') || dataPayload.containsKey('indikator')) {
+                                if (dataPayload.containsKey('foto_sebelum')) {
                                   return _buildIndikatorPopup(marker);
                                 } else {
-                                  return _buildMarkerPopup(marker);
+                                  return _buildDalrendukPopup(marker);
                                 }
                               },
                             ),
@@ -2209,6 +2626,8 @@ class _MyHomePageState extends State<MyHomePage> {
                         _allTkdMarkersMasterList.clear();
                         _tkdMarkers.clear();
                         _tkdData.clear();
+                        _pekerjaanDalrendukData.clear();
+                        _pekerjaanDalrendukMarkers.clear();
                       }),
                     ),
                     const SizedBox(height: 16),
@@ -2223,6 +2642,8 @@ class _MyHomePageState extends State<MyHomePage> {
                           _allTkdMarkersMasterList.clear();
                           _tkdMarkers.clear();
                           _tkdData.clear();
+                          _pekerjaanDalrendukData.clear();
+                          _pekerjaanDalrendukMarkers.clear();
                         });
                         _fetchIndikatorData();
                       },
@@ -2258,6 +2679,9 @@ class _MyHomePageState extends State<MyHomePage> {
                         _indikatorData.clear();
                         _allIndikatorMarkersMasterList.clear();
                         _updatedIndikatorMarkers.clear();
+
+                        _pekerjaanDalrendukData.clear();
+                        _pekerjaanDalrendukMarkers.clear();
 
                         _showMonitorButton = 'tkd';
                         _currentTileUrl = arcgisSatellite;
@@ -2496,6 +2920,147 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                         ),
                       )
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          if (_isShowUpdatePanel)
+            Positioned(
+              top: 10,
+              right: 40,
+              child: Container(
+                width: 520,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF231608),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.white10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.5),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // HEADER SECTION
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            "Kondisi dan Progress Indikator Pemulihan Pemerintahan dan Kemasyarakatan yang Terdampak Bencana",
+                            style: TextStyle(
+                              color: Color(0xFFE5E5E5),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: () => setState(() => _isShowUpdatePanel = false),
+                          icon: const Icon(Icons.close, color: Colors.white60, size: 22),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // DROPDOWNS ROW
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildPanelDropdown(
+                            hint: "Prop :",
+                            value: _selectedOptionProv,
+                            items: _optionProvinces,
+                            onChanged: (String? newId) {
+                              setState(() {
+                                _selectedOptionProv = newId;
+
+                                if (newId != null && newId != '0' && newId != 'All') {
+                                  _selectedProvinceId = newId;
+                                } else {
+                                  _selectedProvinceId = null; 
+                                }
+                              });
+                              _currentLevel = 1;
+                              _selectedOptionKabupaten = '';
+                              _selectedOptionKecamatan = '';
+                              if (newId != null && newId != 'All') {
+                                _selectedProvinceId = newId;
+                                _loadWilayahPanelData(newId, '');
+                              } else {
+                                _selectedProvinceId = null;
+                                _currentMarkers = [];
+                                _loadInitialData();
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            height: 35,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              border: Border.all(color: Colors.white10),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              "Kec : $_selectedOptionKecamatan", 
+                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // SCROLLABLE LIST OF INDICATORS
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(context).size.height * 0.65,
+                      ),
+                      child: Theme(
+                        data: Theme.of(context).copyWith(
+                          scrollbarTheme: ScrollbarThemeData(
+                            thumbColor: WidgetStateProperty.all(Colors.white30),
+                            trackColor: WidgetStateProperty.all(Colors.white10),
+                            interactive: true,
+                          ),
+                        ),
+                        child: Scrollbar(
+                          controller: _panelScrollController,
+                          thumbVisibility: true,
+                          trackVisibility: true,
+                          thickness: 4.0,
+                          child: ListView.separated(
+                            controller: _panelScrollController,
+                            shrinkWrap: true,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: _panelIndikatorData.length,
+                            separatorBuilder: (context, index) => const Divider(
+                              color: Colors.white10,
+                              height: 1,
+                            ),
+                            itemBuilder: (context, index) {
+                              final item = _panelIndikatorData[index];
+                              return _buildProgressIndicatorRow(item);
+                            },
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
