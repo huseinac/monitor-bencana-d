@@ -164,6 +164,12 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Marker> _allIndikatorMarkersMasterList = [];
   List<Marker> _allPekerjaanMarkersMasterList = [];
 
+  List<dynamic> _pekerjaanData = [];
+  List<Marker> _pekerjaanMarkers = [];
+
+  List<dynamic> _pekerjaanDalrendukData = [];
+  List<Marker> _pekerjaanDalrendukMarkers = [];
+
   List<ClickablePolygon> _activePolygons = [];
   String? _selectedAreaCode;
   String? _selectedProvinceId;
@@ -178,6 +184,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isShowUpdatePanel = false;
   bool _isShowPekerjaanPanel = false;
   bool _isShowTkdPanel = false;
+  bool _isShowDalrendukPanel = false;
 
   String? _selectedOptionProv;
   final Map<String, String> _optionProvinces = {
@@ -215,12 +222,988 @@ class _MyHomePageState extends State<MyHomePage> {
 
   List<Map<String, dynamic>> _panelIndikatorData = [];
 
+  Map<String, dynamic>? _selectedProjectData;
+  int selectedTab = 0;
+
+  String? _selectedIndikatorCategory; // Tracks the currently chosen category filter
+
   @override
   void initState() {
     super.initState();
     _currentTileUrl = arcgisSatellite;
     _loadInitialData();
     _initAppDataPath();
+  }
+
+  Widget _buildTabContent() {
+      switch (selectedTab) {
+        case 0:
+          return Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _topCard(
+                      title: 'Realisasi Keuangan',
+                      value: 'Rp. 0',
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: _topCard(
+                      title: 'Realisasi Fisik',
+                      value: '-',
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: _topCard(
+                      title: 'Realisasi Waktu',
+                      value: '-',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                height: 120,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white10,
+                  ),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Grafik Realisasi Timeline',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      '-',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+
+        case 1:
+          final Map<String, dynamic> sektor = _selectedProjectData ?? {};
+
+          // Helper widget for specific detail item lines
+          Widget buildDetailRow(String label, String value, {bool isStatus = false}) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 140,
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.4),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  const Text(':', style: TextStyle(color: Colors.white30, fontSize: 13)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: isStatus
+                        ? Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.2)),
+                                ),
+                                child: Text(
+                                  value.toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Color(0xFF34D399),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            value,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // Helper widget for card sections
+          Widget buildSectionCard({required IconData icon, required String title, required List<Widget> children}) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF11161D),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(icon, color: const Color(0xFFE2B93B), size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10.0),
+                    child: Divider(color: Colors.white10, height: 1),
+                  ),
+                  ...children,
+                ],
+              ),
+            );
+          }
+
+          return Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // LEFT SECTION: DETAIL UTAMA
+                Expanded(
+                  child: buildSectionCard(
+                    icon: Icons.assignment_outlined,
+                    title: 'Detail Informasi',
+                    children: [
+                      Text(
+                        'Informasi Paket Pekerjaan',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                        ),
+                      ),
+                      buildDetailRow('Tahun Anggaran', sektor['tahun_anggaran'] ?? '-'),
+                      buildDetailRow('Nama Paket', sektor['nama'] ?? '-'),
+                      buildDetailRow('Program', sektor['nama_program'] ?? '-'),
+                      buildDetailRow('Kegiatan / Sub', sektor['nama_kegiatan'] ?? '-'),
+                      buildDetailRow('Pagu Dana', sektor['pagu_dana'].toString() ?? '-'),
+                      buildDetailRow('Kategori', sektor['kategori_paket_pekerjaan']?['nama'] ?? sektor['indikator']?['nama'] ?? '-'),
+                      buildDetailRow('Indikator', sektor['indikator']?['nama'] ?? '-'),
+                      buildDetailRow(
+                        'Wilayah', 
+                        sektor['wilayah']['parent']['parent']['nama']+' '+
+                        sektor['wilayah']['parent']['nama']+' '+
+                        sektor['wilayah']['nama']
+                      ),
+                      Text(
+                        'Informasi Pengadaan',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                        ),
+                      ),
+                      buildDetailRow('Nilai Pagu', sektor['pagu_dana'].toString() ?? '-'),
+                      buildDetailRow('Nilai Kontrak', sektor['nilai_kontrak'].toString() ?? '-'),
+                      buildDetailRow('Nama Rekening', sektor['nama_rekening'] ?? '-'),
+                      buildDetailRow('Penyedia', sektor['penyedia'] ?? '-'),
+                      buildDetailRow('No. Kontrak', sektor['no_kontrak'] ?? '-'),
+                      buildDetailRow('Masa Pelaksanaan', sektor['no_kontrak'] ?? 's/d'),
+                      buildDetailRow('Wilayah', sektor['wilayah']['nama'] ?? 's/d'),
+                      buildDetailRow('Koordinat', sektor['latitude']+', '+sektor['longitude'] ?? '-'),
+                      buildDetailRow('Keterangan Kondisi', sektor['keterangan_kondisi'] ?? '-'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+
+        case 2:
+          final Map<String, dynamic> sektor = _selectedProjectData ?? {};
+
+          // Helper widget for specific detail item lines
+          Widget buildDetailRow(String label, String value, {bool isStatus = false}) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 140,
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.4),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  const Text(':', style: TextStyle(color: Colors.white30, fontSize: 13)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: isStatus
+                        ? Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.2)),
+                                ),
+                                child: Text(
+                                  value.toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Color(0xFF34D399),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            value,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // Helper widget for card sections
+          Widget buildSectionCard({required IconData icon, required String title, required List<Widget> children}) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF11161D),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(icon, color: const Color(0xFFE2B93B), size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10.0),
+                    child: Divider(color: Colors.white10, height: 1),
+                  ),
+                  ...children,
+                ],
+              ),
+            );
+          }
+
+          return Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // LEFT SECTION: DETAIL UTAMA
+                Expanded(
+                  child: buildSectionCard(
+                    icon: Icons.assignment_outlined,
+                    title: 'Informasi Penyedia',
+                    children: [
+                      buildDetailRow('Penyedia', sektor['penyedia'] ?? '-'),
+                      buildDetailRow('NIB', '-'),
+                      buildDetailRow('NPWP', '-'),
+                      buildDetailRow('Nama', '-'),
+                      buildDetailRow('Kontak Person', '-'),
+                      buildDetailRow('Email', '-'),
+                      buildDetailRow('No.Telp', '-'),
+                      buildDetailRow('Alamat', '-'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+
+        case 3:
+          // Proportional layout factors for horizontal columns sizing
+          const int flexNo = 1;
+          const int flexUser = 3;
+          const int flexRole = 3;
+          const int flexAktivitas = 6;
+          const int flexTanggal = 3;
+
+          // Hardcoded UI Layout design placeholder values
+          final List<Map<String, String>> templateData = [];
+
+          return Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF11161D), // Main dark background
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Column(
+                children: [
+                  // ==========================================
+                  // STATIC TABLE HEADER HEADER BAND
+                  // ==========================================
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Rincian Paket Pekerjaan',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF161C24), // Darker title banner background
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(10),
+                        topRight: Radius.circular(10),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(flex: flexNo, child: Text('No.', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexUser, child: Text('Nama', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexRole, child: Text('Target', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexAktivitas, child: Text('Satuan', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: Colors.white10, height: 1),
+
+                  // ==========================================
+                  // SCROLLABLE BODY DATA ROWS VIEW
+                  // ==========================================
+                  Expanded(
+                    child: ListView.separated(
+                      physics: const ClampingScrollPhysics(),
+                      itemCount: templateData.length,
+                      separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+                      itemBuilder: (context, index) {
+                        final item = templateData[index];
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          // Alternating subtle zebra striping background
+                          color: index % 2 == 0 ? Colors.transparent : Colors.white.withOpacity(0.01),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // NO. Column
+                              Expanded(
+                                flex: flexNo,
+                                child: Text(
+                                  item['no']!,
+                                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                ),
+                              ),
+                              // USER Column
+                              Expanded(
+                                flex: flexUser,
+                                child: Text(
+                                  item['user']!,
+                                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                              // ROLE BADGE CHIP Column
+                              Expanded(
+                                flex: flexRole,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                                    ),
+                                    child: Text(
+                                      item['role']!,
+                                      style: const TextStyle(color: Color(0xFF64B5F6), fontSize: 11, fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // ACTIVITY DESCRIPTION Column
+                              Expanded(
+                                flex: flexAktivitas,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: Text(
+                                    item['aktivitas']!,
+                                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
+                                  ),
+                                ),
+                              ),
+                              // DATE TIMESTAMP Column
+                              Expanded(
+                                flex: flexTanggal,
+                                child: Text(
+                                  item['tanggal']!,
+                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+
+        case 4:
+          const int flexNo = 1;
+          const int flexUser = 3;
+          const int flexRole = 3;
+          const int flexAktivitas = 6;
+          const int flexTanggal = 3;
+
+          // Hardcoded UI Layout design placeholder values
+          final List<Map<String, String>> templateData = [];
+
+          return Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF11161D), // Main dark background
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Column(
+                children: [
+                  // ==========================================
+                  // STATIC TABLE HEADER HEADER BAND
+                  // ==========================================
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Rincian Paket Pekerjaan',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF161C24), // Darker title banner background
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(10),
+                        topRight: Radius.circular(10),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(flex: flexNo, child: Text('No.', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexUser, child: Text('Nama', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexRole, child: Text('Tanggal Awal', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexRole, child: Text('Tanggal Akhir', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexRole, child: Text('Target', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: Colors.white10, height: 1),
+
+                  // ==========================================
+                  // SCROLLABLE BODY DATA ROWS VIEW
+                  // ==========================================
+                  Expanded(
+                    child: ListView.separated(
+                      physics: const ClampingScrollPhysics(),
+                      itemCount: templateData.length,
+                      separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+                      itemBuilder: (context, index) {
+                        final item = templateData[index];
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          // Alternating subtle zebra striping background
+                          color: index % 2 == 0 ? Colors.transparent : Colors.white.withOpacity(0.01),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // NO. Column
+                              Expanded(
+                                flex: flexNo,
+                                child: Text(
+                                  item['no']!,
+                                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                ),
+                              ),
+                              // USER Column
+                              Expanded(
+                                flex: flexUser,
+                                child: Text(
+                                  item['user']!,
+                                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                              // ROLE BADGE CHIP Column
+                              Expanded(
+                                flex: flexRole,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                                    ),
+                                    child: Text(
+                                      item['role']!,
+                                      style: const TextStyle(color: Color(0xFF64B5F6), fontSize: 11, fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // ACTIVITY DESCRIPTION Column
+                              Expanded(
+                                flex: flexAktivitas,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: Text(
+                                    item['aktivitas']!,
+                                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
+                                  ),
+                                ),
+                              ),
+                              // DATE TIMESTAMP Column
+                              Expanded(
+                                flex: flexTanggal,
+                                child: Text(
+                                  item['tanggal']!,
+                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+
+        case 5:
+          const int flexNo = 1;
+          const int flexUser = 3;
+          const int flexRole = 3;
+          const int flexAktivitas = 6;
+          const int flexTanggal = 3;
+
+          // Hardcoded UI Layout design placeholder values
+          final List<Map<String, String>> templateData = [];
+
+          return Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF11161D), // Main dark background
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Column(
+                children: [
+                  // ==========================================
+                  // STATIC TABLE HEADER HEADER BAND
+                  // ==========================================
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Rincian Paket Pekerjaan',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF161C24), // Darker title banner background
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(10),
+                        topRight: Radius.circular(10),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(flex: flexNo, child: Text('No.', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexUser, child: Text('Nama', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexRole, child: Text('Tanggal', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexRole, child: Text('Realisasi', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: Colors.white10, height: 1),
+
+                  // ==========================================
+                  // SCROLLABLE BODY DATA ROWS VIEW
+                  // ==========================================
+                  Expanded(
+                    child: ListView.separated(
+                      physics: const ClampingScrollPhysics(),
+                      itemCount: templateData.length,
+                      separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+                      itemBuilder: (context, index) {
+                        final item = templateData[index];
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          // Alternating subtle zebra striping background
+                          color: index % 2 == 0 ? Colors.transparent : Colors.white.withOpacity(0.01),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // NO. Column
+                              Expanded(
+                                flex: flexNo,
+                                child: Text(
+                                  item['no']!,
+                                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                ),
+                              ),
+                              // USER Column
+                              Expanded(
+                                flex: flexUser,
+                                child: Text(
+                                  item['user']!,
+                                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                              // ROLE BADGE CHIP Column
+                              Expanded(
+                                flex: flexRole,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                                    ),
+                                    child: Text(
+                                      item['role']!,
+                                      style: const TextStyle(color: Color(0xFF64B5F6), fontSize: 11, fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // ACTIVITY DESCRIPTION Column
+                              Expanded(
+                                flex: flexAktivitas,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: Text(
+                                    item['aktivitas']!,
+                                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
+                                  ),
+                                ),
+                              ),
+                              // DATE TIMESTAMP Column
+                              Expanded(
+                                flex: flexTanggal,
+                                child: Text(
+                                  item['tanggal']!,
+                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+
+        case 6:
+          const int flexNo = 1;
+          const int flexUser = 3;
+          const int flexRole = 3;
+          const int flexAktivitas = 6;
+          const int flexTanggal = 3;
+
+          // Hardcoded UI Layout design placeholder values
+          final List<Map<String, String>> templateData = [];
+
+          return Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF11161D), // Main dark background
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Column(
+                children: [
+                  // ==========================================
+                  // STATIC TABLE HEADER HEADER BAND
+                  // ==========================================
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Rincian Paket Pekerjaan',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF161C24), // Darker title banner background
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(10),
+                        topRight: Radius.circular(10),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(flex: flexNo, child: Text('No.', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexRole, child: Text('Tanggal', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(flex: flexRole, child: Text('Nominal', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.bold))),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: Colors.white10, height: 1),
+
+                  // ==========================================
+                  // SCROLLABLE BODY DATA ROWS VIEW
+                  // ==========================================
+                  Expanded(
+                    child: ListView.separated(
+                      physics: const ClampingScrollPhysics(),
+                      itemCount: templateData.length,
+                      separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+                      itemBuilder: (context, index) {
+                        final item = templateData[index];
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          // Alternating subtle zebra striping background
+                          color: index % 2 == 0 ? Colors.transparent : Colors.white.withOpacity(0.01),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // NO. Column
+                              Expanded(
+                                flex: flexNo,
+                                child: Text(
+                                  item['no']!,
+                                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                ),
+                              ),
+                              // USER Column
+                              Expanded(
+                                flex: flexUser,
+                                child: Text(
+                                  item['user']!,
+                                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                              // ROLE BADGE CHIP Column
+                              Expanded(
+                                flex: flexRole,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                                    ),
+                                    child: Text(
+                                      item['role']!,
+                                      style: const TextStyle(color: Color(0xFF64B5F6), fontSize: 11, fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // ACTIVITY DESCRIPTION Column
+                              Expanded(
+                                flex: flexAktivitas,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: Text(
+                                    item['aktivitas']!,
+                                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
+                                  ),
+                                ),
+                              ),
+                              // DATE TIMESTAMP Column
+                              Expanded(
+                                flex: flexTanggal,
+                                child: Text(
+                                  item['tanggal']!,
+                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+
+        default:
+          return const SizedBox();
+      }
+    }
+
+  Widget _menuItem({
+    required String title,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFF101A2A)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: selected
+              ? const Border(
+                  left: BorderSide(
+                    color: Color(0xFF3B82F6),
+                    width: 3,
+                  ),
+                )
+              : null,
+        ),
+        child: Text(
+          title,
+          style: TextStyle(
+            color: selected
+                ? const Color(0xFF60A5FA)
+                : Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _topCard({
+    required String title,
+    required String value,
+  }) {
+    return Container(
+      height: 100,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 16,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: Colors.white10,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _updatePanelIndikatorFromRawJson(String jsonString) {
@@ -326,64 +1309,156 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  //Widget _buildProgressIndicatorRow(Map<String, dynamic> item) {
+  //  return Padding(
+  //    padding: const EdgeInsets.symmetric(vertical: 12.0),
+  //    child: Column(
+  //      crossAxisAlignment: CrossAxisAlignment.start,
+  //      children: [
+  //        Row(
+  //          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //          crossAxisAlignment: CrossAxisAlignment.start,
+  //          children: [
+  //            Expanded(
+  //              child: Row(
+  //                children: [
+  //                  Icon(
+  //                    item['icon'] as IconData, 
+  //                    color: item['color'] as Color, 
+  //                    size: 22,
+  //                  ),
+  //                  const SizedBox(width: 12),
+  //                  Expanded(
+  //                    child: Text(
+  //                      item['title']!,
+  //                      style: const TextStyle(
+  //                        color: Colors.white,
+  //                        fontSize: 13,
+  //                        fontWeight: FontWeight.w400,
+  //                      ),
+  //                    ),
+  //                  ),
+  //                ],
+  //              ),
+  //            ),
+              
+  //            Text(
+  //              "Total : ${item['total']} | Normal : ${item['normal']} | Mendekati : ${item['mendekati']} | Atensi : ${item['atensi']}",
+  //              style: const TextStyle(
+  //                color: Colors.white,
+  //                fontSize: 11,
+  //                fontWeight: FontWeight.w400,
+  //                letterSpacing: 0.2,
+  //              ),
+  //            ),
+  //          ],
+  //        ),
+  //        const SizedBox(height: 8),
+          
+  //        Text(
+  //          item['percentage']!,
+  //          style: const TextStyle(
+  //            color: Colors.white,
+  //            fontSize: 13,
+  //            fontWeight: FontWeight.bold,
+  //          ),
+  //        ),
+  //      ],
+  //    ),
+  //  );
+  //}
+
   Widget _buildProgressIndicatorRow(Map<String, dynamic> item) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Row(
+      // Check if this row is the currently selected active category filter
+      final bool isSelected = _selectedIndikatorCategory == item['title'];
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4.0),
+        child: InkWell(
+          onTap: () {
+            setState(() {
+              if (isSelected) {
+                // If clicked again, clear selection to show all data
+                _selectedIndikatorCategory = null;
+              } else {
+                // Assign the tapped category title to the global state variable
+                _selectedIndikatorCategory = item['title'];
+              }
+            });
+            debugPrint(_selectedIndikatorCategory);
+            
+            // Optional: Call your refresh/re-fetch functions here if needed, e.g.:
+             _fetchIndikatorData();
+          },
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            // Smooth styling animation feedback when clicked
+            padding: const EdgeInsets.all(8.0),
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.white.withOpacity(0.08) : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: isSelected ? const Color(0xFFD2A86A).withOpacity(0.4) : Colors.transparent,
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      item['icon'] as IconData, 
-                      color: item['color'] as Color, 
-                      size: 22,
-                    ),
-                    const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        item['title']!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                        ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            item['icon'] as IconData, 
+                            color: item['color'] as Color, 
+                            size: 22,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              item['title']!,
+                              style: TextStyle(
+                                color: isSelected ? const Color(0xFFD2A86A) : Colors.white,
+                                fontSize: 13,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    Text(
+                      "Total : ${item['total']} | Normal : ${item['normal']} | Mendekati : ${item['mendekati']} | Atensi : ${item['atensi']}",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: 0.2,
                       ),
                     ),
                   ],
                 ),
-              ),
-              
-              Text(
-                "Total : ${item['total']} | Normal : ${item['normal']} | Mendekati : ${item['mendekati']} | Atensi : ${item['atensi']}",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w400,
-                  letterSpacing: 0.2,
+                const SizedBox(height: 8),
+                
+                Text(
+                  item['percentage']!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          
-          Text(
-            item['percentage']!,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
+              ],
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      );
+    }
 
   String? _getSektorFotoPath(String? fotoFileName) {
     if (fotoFileName == null || fotoFileName.trim().isEmpty) {
@@ -844,6 +1919,18 @@ class _MyHomePageState extends State<MyHomePage> {
 
         if (message is List) {
           for (var sektor in message) {
+            // =========================================================================
+            // NEW FILTER CONDITION: Filter out markers that do not match the selected row
+            // =========================================================================
+            if (_selectedIndikatorCategory != null && _selectedIndikatorCategory!.isNotEmpty) {
+              final String categoryName = (sektor['parent_indikator_nama'] ?? '').toString().trim();
+
+              // Skip generating and showing this marker if it doesn't match the active filter
+              if (categoryName != _selectedIndikatorCategory) {
+                continue;
+              }
+            }
+
             final Map<String, dynamic>? wilayah = sektor['wilayah'];
             final String wilayahKode = (wilayah != null && wilayah['kode'] != null)
                 ? wilayah['kode'].toString().trim()
@@ -996,344 +2083,782 @@ class _MyHomePageState extends State<MyHomePage> {
     return '$markerImage.png';
   }
 
-  Widget _buildIndikatorPopup(Marker marker) {
-    final sektor = (marker.key as ValueKey).value as Map<String, dynamic>;
+  //Widget _buildIndikatorPopup(Marker marker) {
+  //  final sektor = (marker.key as ValueKey).value as Map<String, dynamic>;
 
-    String namaSektor = sektor['nama_lokasi'] ?? 'Tanpa Nama';
-    String namaIndikator = (sektor['indikator']?['nama'] ?? 'Indikator') + ' Terdampak Bencana';
+  //  String namaSektor = sektor['nama_lokasi'] ?? 'Tanpa Nama';
+  //  String namaIndikator = (sektor['indikator']?['nama'] ?? 'Indikator') + ' Terdampak Bencana';
     
-    String wilayahInfo = 
-    [
-      sektor['wilayah']['parent']['parent']['nama'] ?? '',
-      sektor['wilayah']['parent']['nama'] ?? '',
-      sektor['wilayah']['nama'] ?? ''
-    ].where((element) => element.isNotEmpty).join(' - ');
+  //  String wilayahInfo = 
+  //  [
+  //    sektor['wilayah']['parent']['parent']['nama'] ?? '',
+  //    sektor['wilayah']['parent']['nama'] ?? '',
+  //    sektor['wilayah']['nama'] ?? ''
+  //  ].where((element) => element.isNotEmpty).join(' - ');
     
-    if (wilayahInfo.isEmpty) {
-      wilayahInfo = sektor['wilayah']?['nama'] ?? '-';
-    }
+  //  if (wilayahInfo.isEmpty) {
+  //    wilayahInfo = sektor['wilayah']?['nama'] ?? '-';
+  //  }
 
-    String kondisi = sektor['kondisi'] ?? '-';
-    String status = sektor['status'] ?? '-';
-    String kondisiAwal = sektor['kondisi_awal'] ?? '-';
-    String keterangan = sektor['keterangan'] ?? '-';
+  //  String kondisi = sektor['kondisi'] ?? '-';
+  //  String status = sektor['status'] ?? '-';
+  //  String kondisiAwal = sektor['kondisi_awal'] ?? '-';
+  //  String keterangan = sektor['keterangan'] ?? '-';
 
-    double persentasePulih = 0.0;
-    var rawPersentase = sektor['persentase'];
-    if (rawPersentase != null) {
-      persentasePulih = double.tryParse(rawPersentase.toString()) ?? 0.0;
-    }
+  //  double persentasePulih = 0.0;
+  //  var rawPersentase = sektor['persentase'];
+  //  if (rawPersentase != null) {
+  //    persentasePulih = double.tryParse(rawPersentase.toString()) ?? 0.0;
+  //  }
 
-    String markerImage = '';
-    if (sektor['indikator']['nama'].contains('Kantor')) {
-        markerImage = 'building';
-    } else if (sektor['indikator']['nama'].contains('Faskes')) {
-        markerImage = 'health';
-    } else if (
-        sektor['indikator']['nama'].contains('PAUD') ||
-        sektor['indikator']['nama'].contains('TK') ||
-        sektor['indikator']['nama'].contains('SD') ||
-        sektor['indikator']['nama'].contains('SMP') ||
-        sektor['indikator']['nama'].contains('SMA/SMK') ||
-        sektor['indikator']['nama'].contains('Madrasah/Ponpes')
-      ) {
-        markerImage = 'school';
-    } else if (sektor['indikator']['nama'].contains('Jalan')) {
-        markerImage = 'road';
-    } else if (sektor['indikator']['nama'].contains('Jembatan')) {
-        markerImage = 'bride';
-    } else if (sektor['indikator']['nama'].contains('Kelistrikan')) {
-        markerImage = 'electric';
-    } else if (sektor['indikator']['nama'].contains('PDAM/SPAM')) {
-        markerImage = 'water';
-    } else if (sektor['indikator']['nama'].contains('Gedung Rumah Ibadah')) {
-        markerImage = 'religion';
-    } else if (sektor['indikator']['nama'].contains('Sungai')) {
-        markerImage = 'river';
-    } else if (
-        sektor['indikator']['nama'].contains('Huntara') ||
-        sektor['indikator']['nama'].contains('Huntap')
-      ) {
-        markerImage = 'home';
-    } else if (sektor['indikator']['nama'].contains('Pengungsian')) {
-        markerImage = 'homes';
-    } else if (
-        sektor['indikator']['nama'].contains('toko diluar pasar') ||
-        sektor['indikator']['nama'].contains('Hotel/Penginapan')
-      ) {
-        markerImage = 'building';
-    } else if (sektor['indikator']['nama'].contains('SPBU')) {
-        markerImage = 'gas_station';
-    } else if (sektor['indikator']['nama'].contains('Gas LPG')) {
-        markerImage = 'gas';
-    } else if (
-        sektor['indikator']['nama'].contains('Gedung/Sarpras Pasar') ||
-        sektor['indikator']['nama'].contains('Gedung/Sarpras Resto/Warung/Kafe/kedai') ||
-        sektor['indikator']['nama'].contains('Koperasi')
-      ) {
-        markerImage = 'store';
-    } else if (sektor['indikator']['nama'].contains('INTERNET')) {
-        markerImage = 'help';
-    } else if (
-        sektor['indikator']['nama'].contains('Persawahan') ||
-        sektor['indikator']['nama'].contains('Perikanan (Tambak)')
-      ) {
-        markerImage = 'river';
-    } else if (
-        sektor['indikator']['nama'].contains('Pembersihan lumpur') ||
-        sektor['indikator']['nama'].contains('DTH')
-      ) {
-        markerImage = 'help';
-    }
+  //  String markerImage = '';
+  //  if (sektor['indikator']['nama'].contains('Kantor')) {
+  //      markerImage = 'building';
+  //  } else if (sektor['indikator']['nama'].contains('Faskes')) {
+  //      markerImage = 'health';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('PAUD') ||
+  //      sektor['indikator']['nama'].contains('TK') ||
+  //      sektor['indikator']['nama'].contains('SD') ||
+  //      sektor['indikator']['nama'].contains('SMP') ||
+  //      sektor['indikator']['nama'].contains('SMA/SMK') ||
+  //      sektor['indikator']['nama'].contains('Madrasah/Ponpes')
+  //    ) {
+  //      markerImage = 'school';
+  //  } else if (sektor['indikator']['nama'].contains('Jalan')) {
+  //      markerImage = 'road';
+  //  } else if (sektor['indikator']['nama'].contains('Jembatan')) {
+  //      markerImage = 'bride';
+  //  } else if (sektor['indikator']['nama'].contains('Kelistrikan')) {
+  //      markerImage = 'electric';
+  //  } else if (sektor['indikator']['nama'].contains('PDAM/SPAM')) {
+  //      markerImage = 'water';
+  //  } else if (sektor['indikator']['nama'].contains('Gedung Rumah Ibadah')) {
+  //      markerImage = 'religion';
+  //  } else if (sektor['indikator']['nama'].contains('Sungai')) {
+  //      markerImage = 'river';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('Huntara') ||
+  //      sektor['indikator']['nama'].contains('Huntap')
+  //    ) {
+  //      markerImage = 'home';
+  //  } else if (sektor['indikator']['nama'].contains('Pengungsian')) {
+  //      markerImage = 'homes';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('toko diluar pasar') ||
+  //      sektor['indikator']['nama'].contains('Hotel/Penginapan')
+  //    ) {
+  //      markerImage = 'building';
+  //  } else if (sektor['indikator']['nama'].contains('SPBU')) {
+  //      markerImage = 'gas_station';
+  //  } else if (sektor['indikator']['nama'].contains('Gas LPG')) {
+  //      markerImage = 'gas';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('Gedung/Sarpras Pasar') ||
+  //      sektor['indikator']['nama'].contains('Gedung/Sarpras Resto/Warung/Kafe/kedai') ||
+  //      sektor['indikator']['nama'].contains('Koperasi')
+  //    ) {
+  //      markerImage = 'store';
+  //  } else if (sektor['indikator']['nama'].contains('INTERNET')) {
+  //      markerImage = 'help';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('Persawahan') ||
+  //      sektor['indikator']['nama'].contains('Perikanan (Tambak)')
+  //    ) {
+  //      markerImage = 'river';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('Pembersihan lumpur') ||
+  //      sektor['indikator']['nama'].contains('DTH')
+  //    ) {
+  //      markerImage = 'help';
+  //  }
 
-    switch (sektor['status']) {
-      case 'Atensi':
-        markerImage += '-yellow';
-      break;
-      case 'Mendekati':
-        markerImage += '-blue';
-      break;
-      case 'Sedang ditangani':
-        markerImage += '-blue';
-      break;
-      case 'Belum ditangani':
-        markerImage += '-red';
-      break;
-      default:
-    }
-    markerImage += '.png';
+  //  switch (sektor['status']) {
+  //    case 'Atensi':
+  //      markerImage += '-yellow';
+  //    break;
+  //    case 'Mendekati':
+  //      markerImage += '-blue';
+  //    break;
+  //    case 'Sedang ditangani':
+  //      markerImage += '-blue';
+  //    break;
+  //    case 'Belum ditangani':
+  //      markerImage += '-red';
+  //    break;
+  //    default:
+  //  }
+  //  markerImage += '.png';
 
-    final String? sebelumPath = _getSektorFotoPath(sektor['foto_sebelum']);
-    final String? sesudahPath = _getSektorFotoPath(sektor['foto_sesudah']);
+  //  final String? sebelumPath = _getSektorFotoPath(sektor['foto_sebelum']);
+  //  final String? sesudahPath = _getSektorFotoPath(sektor['foto_sesudah']);
 
-    void _showLargeImageView(String title, String imagePath) {
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          bool isExpanded = false;
+  //  void _showLargeImageView(String title, String imagePath) {
+  //    showDialog(
+  //      context: context,
+  //      builder: (BuildContext context) {
+  //        bool isExpanded = false;
 
-          return StatefulBuilder(
-            builder: (context, setDialogState) {
-              return Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: const EdgeInsets.all(16), 
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.of(context).pop(),
-                      child: Container(color: Colors.transparent),
-                    ),
+  //        return StatefulBuilder(
+  //          builder: (context, setDialogState) {
+  //            return Dialog(
+  //              backgroundColor: Colors.transparent,
+  //              insetPadding: const EdgeInsets.all(16), 
+  //              child: Stack(
+  //                alignment: Alignment.center,
+  //                children: [
+  //                  GestureDetector(
+  //                    onTap: () => Navigator.of(context).pop(),
+  //                    child: Container(color: Colors.transparent),
+  //                  ),
                     
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                      width: isExpanded ? MediaQuery.of(context).size.width * 0.95 : 800, 
-                      height: isExpanded ? MediaQuery.of(context).size.height * 0.90 : 600,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1a2c42),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white12),
+  //                  AnimatedContainer(
+  //                    duration: const Duration(milliseconds: 300),
+  //                    curve: Curves.easeInOut,
+  //                    width: isExpanded ? MediaQuery.of(context).size.width * 0.95 : 800, 
+  //                    height: isExpanded ? MediaQuery.of(context).size.height * 0.90 : 600,
+  //                    decoration: BoxDecoration(
+  //                      color: const Color(0xFF1a2c42),
+  //                      borderRadius: BorderRadius.circular(12),
+  //                      border: Border.all(color: Colors.white12),
+  //                    ),
+  //                    child: Column(
+  //                      mainAxisSize: MainAxisSize.min,
+  //                      children: [
+  //                        Padding(
+  //                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+  //                          child: Row(
+  //                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //                            children: [
+  //                              Expanded(
+  //                                child: Text(
+  //                                  title,
+  //                                  overflow: TextOverflow.ellipsis,
+  //                                  style: const TextStyle(
+  //                                    color: Colors.white, 
+  //                                    fontSize: 14, 
+  //                                    fontWeight: FontWeight.bold,
+  //                                  ),
+  //                                ),
+  //                              ),
+  //                              Text(
+  //                                isExpanded ? "Klik foto untuk mengecilkan" : "Klik foto untuk memperbesar",
+  //                                style: const TextStyle(color: Colors.white38, fontSize: 11),
+  //                              ),
+  //                              const SizedBox(width: 8),
+  //                              IconButton(
+  //                                icon: const Icon(Icons.close, color: Colors.white60, size: 20),
+  //                                onPressed: () => Navigator.of(context).pop(),
+  //                              ),
+  //                            ],
+  //                          ),
+  //                        ),
+  //                        const Divider(color: Colors.white12, height: 1),
+                          
+  //                        Flexible(
+  //                          child: Padding(
+  //                            padding: const EdgeInsets.all(16),
+  //                            child: GestureDetector(
+  //                              onTap: () {
+  //                                setDialogState(() {
+  //                                  isExpanded = !isExpanded;
+  //                                });
+  //                              },
+  //                              child: MouseRegion(
+  //                                cursor: SystemMouseCursors.click,
+  //                                child: ClipRRect(
+  //                                  borderRadius: BorderRadius.circular(8),
+  //                                  child: AnimatedSize(
+  //                                    duration: const Duration(milliseconds: 300),
+  //                                    curve: Curves.easeInOut,
+  //                                    child: AppImage(
+  //                                      imagePath,
+  //                                      fit: isExpanded ? BoxFit.contain : BoxFit.cover,
+  //                                      width: double.infinity,
+  //                                      height: double.infinity,
+  //                                    ),
+  //                                  ),
+  //                                ),
+  //                              ),
+  //                            ),
+  //                          ),
+  //                        ),
+  //                      ],
+  //                    ),
+  //                  ),
+  //                ],
+  //              ),
+  //            );
+  //          },
+  //        );
+  //      },
+  //    );
+  //  }
+
+  //  return Container(
+  //    width: 320,
+  //    padding: const EdgeInsets.all(16),
+  //    decoration: BoxDecoration(
+  //      color: const Color(0xFF1A1A1A),
+  //      borderRadius: BorderRadius.circular(12),
+  //      boxShadow: const [
+  //        BoxShadow(blurRadius: 12, color: Colors.black, offset: Offset(0, 4))
+  //      ],
+  //    ),
+  //    child: Stack(
+  //      children: [
+  //        Padding(
+  //          padding: const EdgeInsets.all(16),
+  //          child: Column(
+  //            mainAxisSize: MainAxisSize.min,
+  //            crossAxisAlignment: CrossAxisAlignment.start,
+  //            children: [
+  //              Text(
+  //                namaSektor.toUpperCase(),
+  //                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+  //              ),
+  //              const SizedBox(height: 12),
+  //              const Divider(color: Colors.white24, height: 1),
+  //              const SizedBox(height: 12),
+
+  //              Row(
+  //                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //                children: [
+  //                  const Text("Persentase Pulih:", style: TextStyle(color: Colors.white70, fontSize: 12)),
+  //                  Text(
+  //                    "${persentasePulih.toStringAsFixed(0)}%",
+  //                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+  //                  ),
+  //                ],
+  //              ),
+  //              const SizedBox(height: 8),
+  //              ClipRRect(
+  //                borderRadius: BorderRadius.circular(4),
+  //                child: LinearProgressIndicator(
+  //                  value: persentasePulih / 100,
+  //                  backgroundColor: Colors.white10,
+  //                  color: const Color(0xFF4CAF50),
+  //                  minHeight: 8,
+  //                ),
+  //              ),
+  //              const SizedBox(height: 16),
+
+  //              Container(
+  //                padding: const EdgeInsets.all(12),
+  //                decoration: BoxDecoration(
+  //                  color: Colors.white.withOpacity(0.04),
+  //                  borderRadius: BorderRadius.circular(8),
+  //                ),
+  //                child: Row(
+  //                  children: [
+  //                    AppImage(
+  //                      _getAssetPath('assets/icons/$markerImage'),
+  //                      width: 20,
+  //                      height: 20,
+  //                      fit: BoxFit.contain,
+  //                      errorBuilder: (context, error, stackTrace) {
+  //                        return const Icon(Icons.assignment, color: Colors.tealAccent, size: 20);
+  //                      },
+  //                    ),
+  //                    const SizedBox(width: 12),
+  //                    Expanded(
+  //                      child: Text(
+  //                        namaIndikator,
+  //                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+  //                      ),
+  //                    ),
+  //                  ],
+  //                ),
+  //              ),
+  //              const SizedBox(height: 12),
+
+  //              Container(
+  //                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+  //                decoration: BoxDecoration(
+  //                  color: Colors.white.withOpacity(0.04),
+  //                  borderRadius: BorderRadius.circular(8),
+  //                ),
+  //                child: Row(
+  //                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+  //                  children: [
+  //                    Expanded(
+  //                      child: Center(
+  //                        child: sebelumPath != null
+  //                            ? InkWell(
+  //                              borderRadius: BorderRadius.circular(4),
+  //                              onTap: () => _showLargeImageView("Foto Kondisi Sebelum", sebelumPath),
+  //                              child: Tooltip(
+  //                                message: "Klik untuk memperbesar",
+  //                                child: 
+  //                                ClipRRect(
+  //                                  borderRadius: BorderRadius.circular(4),
+  //                                  child: AppImage(
+  //                                    sebelumPath,
+  //                                    width: 100,
+  //                                    height: 70,
+  //                                    fit: BoxFit.cover,
+  //                                    errorBuilder: (context, error, stackTrace) => const Text(
+  //                                      "Gagal Memuat Gambar", 
+  //                                      style: TextStyle(color: Colors.redAccent, fontSize: 11)
+  //                                    ),
+  //                                  ),
+  //                                ),
+  //                              ),
+  //                            )
+  //                          : const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+  //                      ),
+  //                    ),
+  //                    Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2), size: 16),
+  //                    Expanded(
+  //                      child: Center(
+  //                        child: sesudahPath != null
+  //                            ? InkWell(
+  //                                borderRadius: BorderRadius.circular(4),
+  //                                onTap: () => _showLargeImageView("Foto Kondisi Sesudah", sesudahPath),
+  //                                child: Tooltip(
+  //                                  message: "Klik untuk memperbesar",
+  //                                  child: ClipRRect(
+  //                                    borderRadius: BorderRadius.circular(4),
+  //                                    child: AppImage(
+  //                                      sesudahPath,
+  //                                      width: 100,
+  //                                      height: 70,
+  //                                      fit: BoxFit.cover,
+  //                                      errorBuilder: (context, error, stackTrace) => const Text(
+  //                                        "Gagal Memuat Gambar", 
+  //                                        style: TextStyle(color: Colors.redAccent, fontSize: 11)
+  //                                      ),
+  //                                    ),
+  //                                  ),
+  //                                ),
+  //                              )
+  //                            : const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+  //                      ),
+  //                    ),
+  //                  ],
+  //                ),
+  //              ),
+  //              const SizedBox(height: 16),
+
+  //              _buildMetaRow("Wilayah", wilayahInfo),
+  //              _buildMetaRow("Kondisi", kondisi),
+  //              _buildMetaRow("Status", status),
+  //              _buildMetaRow("Kondisi Awal", kondisiAwal),
+  //              _buildMetaRow("Keterangan", keterangan),
+  //            ],
+  //          ),
+  //        ),
+  //        Positioned(
+  //          top: 4, 
+  //          right: 4,
+  //          child: IconButton(
+  //            icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+  //            tooltip: 'Tutup',
+  //            onPressed: () {
+  //              _popupLayerController.hideAllPopups();
+  //            },
+  //          ),
+  //        ),
+  //      ],
+  //    ),
+  //  );
+  //}
+
+  Widget _buildIndikatorPopup(Marker marker) {
+      // Safely cast the raw project Map payload straight out from the active marker key
+      final sektor = (marker.key as ValueKey).value as Map<String, dynamic>;
+
+      String namaSektor = sektor['nama_lokasi'] ?? 'Tanpa Nama';
+      String namaIndikator = (sektor['indikator']?['nama'] ?? 'Indikator') + ' Terdampak Bencana';
+      
+      String wilayahInfo = 
+      [
+        sektor['wilayah']['parent']['parent']['nama'] ?? '',
+        sektor['wilayah']['parent']['nama'] ?? '',
+        sektor['wilayah']['nama'] ?? ''
+      ].where((element) => element.isNotEmpty).join(' - ');
+      
+      if (wilayahInfo.isEmpty) {
+        wilayahInfo = sektor['wilayah']?['nama'] ?? '-';
+      }
+
+      String kondisi = sektor['kondisi'] ?? '-';
+      String status = sektor['status'] ?? '-';
+      String kondisiAwal = sektor['kondisi_awal'] ?? '-';
+      String keterangan = sektor['keterangan'] ?? '-';
+
+      double persentasePulih = 0.0;
+      var rawPersentase = sektor['persentase'];
+      if (rawPersentase != null) {
+        persentasePulih = double.tryParse(rawPersentase.toString()) ?? 0.0;
+      }
+
+      String markerImage = '';
+      if (sektor['indikator']['nama'].contains('Kantor')) {
+          markerImage = 'building';
+      } else if (sektor['indikator']['nama'].contains('Faskes')) {
+          markerImage = 'health';
+      } else if (
+          sektor['indikator']['nama'].contains('PAUD') ||
+          sektor['indikator']['nama'].contains('TK') ||
+          sektor['indikator']['nama'].contains('SD') ||
+          sektor['indikator']['nama'].contains('SMP') ||
+          sektor['indikator']['nama'].contains('SMA/SMK') ||
+          sektor['indikator']['nama'].contains('Madrasah/Ponpes')
+        ) {
+          markerImage = 'school';
+      } else if (sektor['indikator']['nama'].contains('Jalan')) {
+          markerImage = 'road';
+      } else if (sektor['indikator']['nama'].contains('Jembatan')) {
+          markerImage = 'bride';
+      } else if (sektor['indikator']['nama'].contains('Kelistrikan')) {
+          markerImage = 'electric';
+      } else if (sektor['indikator']['nama'].contains('PDAM/SPAM')) {
+          markerImage = 'water';
+      } else if (sektor['indikator']['nama'].contains('Gedung Rumah Ibadah')) {
+          markerImage = 'religion';
+      } else if (sektor['indikator']['nama'].contains('Sungai')) {
+          markerImage = 'river';
+      } else if (
+          sektor['indikator']['nama'].contains('Huntara') ||
+          sektor['indikator']['nama'].contains('Huntap')
+        ) {
+          markerImage = 'home';
+      } else if (sektor['indikator']['nama'].contains('Pengungsian')) {
+          markerImage = 'homes';
+      } else if (
+          sektor['indikator']['nama'].contains('toko diluar pasar') ||
+          sektor['indikator']['nama'].contains('Hotel/Penginapan')
+        ) {
+          markerImage = 'building';
+      } else if (sektor['indikator']['nama'].contains('SPBU')) {
+          markerImage = 'gas_station';
+      } else if (sektor['indikator']['nama'].contains('Gas LPG')) {
+          markerImage = 'gas';
+      } else if (
+          sektor['indikator']['nama'].contains('Gedung/Sarpras Pasar') ||
+          sektor['indikator']['nama'].contains('Gedung/Sarpras Resto/Warung/Kafe/kedai') ||
+          sektor['indikator']['nama'].contains('Koperasi')
+        ) {
+          markerImage = 'store';
+      } else if (sektor['indikator']['nama'].contains('INTERNET')) {
+          markerImage = 'help';
+      } else if (
+          sektor['indikator']['nama'].contains('Persawahan') ||
+          sektor['indikator']['nama'].contains('Perikanan (Tambak)')
+        ) {
+          markerImage = 'river';
+      } else if (
+          sektor['indikator']['nama'].contains('Pembersihan lumpur') ||
+          sektor['indikator']['nama'].contains('DTH')
+        ) {
+          markerImage = 'help';
+      }
+
+      switch (sektor['status']) {
+        case 'Atensi':
+          markerImage += '-yellow';
+        break;
+        case 'Mendekati':
+          markerImage += '-blue';
+        break;
+        case 'Sedang ditangani':
+          markerImage += '-blue';
+        break;
+        case 'Belum ditangani':
+          markerImage += '-red';
+        break;
+        default:
+      }
+      markerImage += '.png';
+
+      final String? sebelumPath = _getSektorFotoPath(sektor['foto_sebelum']);
+      final String? sesudahPath = _getSektorFotoPath(sektor['foto_sesudah']);
+
+      void _showLargeImageView(String title, String imagePath) {
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            bool isExpanded = false;
+
+            return StatefulBuilder(
+              builder: (context, setDialogState) {
+                return Dialog(
+                  backgroundColor: Colors.transparent,
+                  insetPadding: const EdgeInsets.all(16), 
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).pop(),
+                        child: Container(color: Colors.transparent),
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    title,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white, 
-                                      fontSize: 14, 
-                                      fontWeight: FontWeight.bold,
+                      
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                        width: isExpanded ? MediaQuery.of(context).size.width * 0.95 : 800, 
+                        height: isExpanded ? MediaQuery.of(context).size.height * 0.90 : 600,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1a2c42),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white, 
+                                        fontSize: 14, 
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                Text(
-                                  isExpanded ? "Klik foto untuk mengecilkan" : "Klik foto untuk memperbesar",
-                                  style: const TextStyle(color: Colors.white38, fontSize: 11),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.close, color: Colors.white60, size: 20),
-                                  onPressed: () => Navigator.of(context).pop(),
-                                ),
-                              ],
+                                  Text(
+                                    isExpanded ? "Klik foto untuk mengecilkan" : "Klik foto untuk memperbesar",
+                                    style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(Icons.close, color: Colors.white60, size: 20),
+                                    onPressed: () => Navigator.of(context).pop(),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          const Divider(color: Colors.white12, height: 1),
-                          
-                          Flexible(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: GestureDetector(
-                                onTap: () {
-                                  setDialogState(() {
-                                    isExpanded = !isExpanded;
-                                  });
-                                },
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.click,
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: AnimatedSize(
-                                      duration: const Duration(milliseconds: 300),
-                                      curve: Curves.easeInOut,
-                                      child: AppImage(
-                                        imagePath,
-                                        fit: isExpanded ? BoxFit.contain : BoxFit.cover,
-                                        width: double.infinity,
-                                        height: double.infinity,
+                            const Divider(color: Colors.white12, height: 1),
+                            
+                            Flexible(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setDialogState(() {
+                                      isExpanded = !isExpanded;
+                                    });
+                                  },
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.click,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: AnimatedSize(
+                                        duration: const Duration(milliseconds: 300),
+                                        curve: Curves.easeInOut,
+                                        child: AppImage(
+                                          imagePath,
+                                          fit: isExpanded ? BoxFit.contain : BoxFit.cover,
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      );
-    }
-
-    return Container(
-      width: 320,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
-          BoxShadow(blurRadius: 12, color: Colors.black, offset: Offset(0, 4))
-        ],
-      ),
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  namaSektor.toUpperCase(),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 12),
-                const Divider(color: Colors.white24, height: 1),
-                const SizedBox(height: 12),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("Persentase Pulih:", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                    Text(
-                      "${persentasePulih.toStringAsFixed(0)}%",
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: persentasePulih / 100,
-                    backgroundColor: Colors.white10,
-                    color: const Color(0xFF4CAF50),
-                    minHeight: 8,
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.04),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      AppImage(
-                        _getAssetPath('assets/icons/$markerImage'),
-                        width: 20,
-                        height: 20,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Icon(Icons.assignment, color: Colors.tealAccent, size: 20);
-                        },
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          namaIndikator,
-                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 12),
+                );
+              },
+            );
+          },
+        );
+      }
+      
+      //String wilayahInfo = [
+      //  sektor['wilayah']?['parent']?['parent']?['nama'] ?? '',
+      //  sektor['wilayah']?['parent']?['nama'] ?? '',
+      //  sektor['wilayah']?['nama'] ?? ''
+      //].where((element) => element.isNotEmpty).join(' - ');
 
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.04),
-                    borderRadius: BorderRadius.circular(8),
+      return Container(
+        width: 300,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFA1A1A1A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white24, width: 1),
+          boxShadow: const [
+            BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 4)),
+          ],
+        ),
+        //child: Column(
+        //  mainAxisSize: MainAxisSize.min,
+        //  crossAxisAlignment: CrossAxisAlignment.start,
+        //  children: [
+        //    Row(
+        //      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        //      children: [
+        //        Expanded(
+        //          child: Text(
+        //            namaSektor,
+        //            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+        //            maxLines: 1,
+        //            overflow: TextOverflow.ellipsis,
+        //          ),
+        //        ),
+        //        IconButton(
+        //          constraints: const BoxConstraints(),
+        //          padding: EdgeInsets.zero,
+        //          icon: const Icon(Icons.close, color: Colors.white60, size: 16),
+        //          onPressed: () => _popupLayerController.hideAllPopups(),
+        //        ),
+        //      ],
+        //    ),
+        //    const Divider(color: Colors.white24, height: 12),
+            
+        //    Text(
+        //      "Indikator: $namaIndikator",
+        //      style: const TextStyle(color: Colors.white70, fontSize: 11),
+        //    ),
+        //    const SizedBox(height: 4),
+        //    Text(
+        //      "Wilayah: $wilayahInfo",
+        //      style: const TextStyle(color: Colors.white60, fontSize: 11),
+        //      maxLines: 2,
+        //      overflow: TextOverflow.ellipsis,
+        //    ),
+            
+        //    const SizedBox(height: 12),
+        //    Row(
+        //      children: [
+        //        Expanded(
+        //          child: GestureDetector(
+        //            onTap: () {
+        //              setState(() {
+        //                // 1. Dismiss the indicator popup overlay box
+        //                _popupLayerController.hideAllPopups();
+                        
+        //                // 2. Safeguard that data is mapped onto your main tracking holder
+        //                _selectedProjectData = sektor;
+                        
+        //                // 3. Open the main panel container layout widget context
+        //                _isShowDalrendukPanel = true;
+                        
+        //                // 4. Match tab view index selection to focus 'Informasi' (Case 1)
+        //                selectedTab = 1; 
+        //              });
+        //            },
+        //            child: Container(
+        //              padding: const EdgeInsets.symmetric(vertical: 8),
+        //              decoration: BoxDecoration(
+        //                color: const Color(0xFF22467A),
+        //                borderRadius: BorderRadius.circular(6),
+        //              ),
+        //              child: const Center(
+        //                child: Text(
+        //                  "Detail", 
+        //                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+        //                ),
+        //              ),
+        //            ),
+        //          ),
+        //        ),
+        //      ],
+        //    )
+        //  ],
+        //),
+        child:Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    namaSektor.toUpperCase(),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  const SizedBox(height: 12),
+                  const Divider(color: Colors.white24, height: 1),
+                  const SizedBox(height: 12),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Center(
-                          child: sebelumPath != null
-                              ? InkWell(
-                                borderRadius: BorderRadius.circular(4),
-                                onTap: () => _showLargeImageView("Foto Kondisi Sebelum", sebelumPath),
-                                child: Tooltip(
-                                  message: "Klik untuk memperbesar",
-                                  child: 
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(4),
-                                    child: AppImage(
-                                      sebelumPath,
-                                      width: 100,
-                                      height: 70,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) => const Text(
-                                        "Gagal Memuat Gambar", 
-                                        style: TextStyle(color: Colors.redAccent, fontSize: 11)
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
-                        ),
+                      const Text("Persentase Pulih:", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(
+                        "${persentasePulih.toStringAsFixed(0)}%",
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
-                      Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2), size: 16),
-                      Expanded(
-                        child: Center(
-                          child: sesudahPath != null
-                              ? InkWell(
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: persentasePulih / 100,
+                      backgroundColor: Colors.white10,
+                      color: const Color(0xFF4CAF50),
+                      minHeight: 8,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        AppImage(
+                          _getAssetPath('assets/icons/$markerImage'),
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(Icons.assignment, color: Colors.tealAccent, size: 20);
+                          },
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            namaIndikator,
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Expanded(
+                          child: Center(
+                            child: sebelumPath != null
+                                ? InkWell(
                                   borderRadius: BorderRadius.circular(4),
-                                  onTap: () => _showLargeImageView("Foto Kondisi Sesudah", sesudahPath),
+                                  onTap: () => _showLargeImageView("Foto Kondisi Sebelum", sebelumPath),
                                   child: Tooltip(
                                     message: "Klik untuk memperbesar",
-                                    child: ClipRRect(
+                                    child: 
+                                    ClipRRect(
                                       borderRadius: BorderRadius.circular(4),
                                       child: AppImage(
-                                        sesudahPath,
+                                        sebelumPath,
                                         width: 100,
                                         height: 70,
                                         fit: BoxFit.cover,
@@ -1346,55 +2871,259 @@ class _MyHomePageState extends State<MyHomePage> {
                                   ),
                                 )
                               : const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                          ),
                         ),
-                      ),
-                    ],
+                        Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2), size: 16),
+                        Expanded(
+                          child: Center(
+                            child: sesudahPath != null
+                                ? InkWell(
+                                    borderRadius: BorderRadius.circular(4),
+                                    onTap: () => _showLargeImageView("Foto Kondisi Sesudah", sesudahPath),
+                                    child: Tooltip(
+                                      message: "Klik untuk memperbesar",
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: AppImage(
+                                          sesudahPath,
+                                          width: 100,
+                                          height: 70,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => const Text(
+                                            "Gagal Memuat Gambar", 
+                                            style: TextStyle(color: Colors.redAccent, fontSize: 11)
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : const Text("Belum Dilaporkan", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                _buildMetaRow("Wilayah", wilayahInfo),
-                _buildMetaRow("Kondisi", kondisi),
-                _buildMetaRow("Status", status),
-                _buildMetaRow("Kondisi Awal", kondisiAwal),
-                _buildMetaRow("Keterangan", keterangan),
-              ],
+                  _buildMetaRow("Wilayah", wilayahInfo),
+                  _buildMetaRow("Kondisi", kondisi),
+                  _buildMetaRow("Status", status),
+                  _buildMetaRow("Kondisi Awal", kondisiAwal),
+                  _buildMetaRow("Keterangan", keterangan),
+                ],
+              ),
             ),
-          ),
-          Positioned(
-            top: 4, 
-            right: 4,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white54, size: 20),
-              tooltip: 'Tutup',
-              onPressed: () {
-                _popupLayerController.hideAllPopups();
-              },
+            Positioned(
+              top: 4, 
+              right: 4,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                tooltip: 'Tutup',
+                onPressed: () {
+                  _popupLayerController.hideAllPopups();
+                },
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
+    }
+
+  //Widget _buildDalrendukPopup(Marker marker) {
+  //  final sektor = (marker.key as ValueKey).value as Map<String, dynamic>;
+
+  //  String namaWilayah = 
+  //    sektor['wilayah']['parent']['parent']['nama'] + ' - ' +sektor['wilayah']['parent']['nama'] + ' - ' + sektor['wilayah']['nama']
+  //  ;
+  //  String namaSektor = sektor['nama'] ?? '-';
+  //  String formatRupiah(dynamic rawValue) {
+  //    if (rawValue == null) return 'Rp. 0';
+      
+  //    String digitsOnly = rawValue.toString().replaceAll(RegExp(r'[^0-9]'), '');
+  //    if (digitsOnly.isEmpty) return 'Rp. 0';
+      
+  //    final intValue = int.tryParse(digitsOnly) ?? 0;
+      
+  //    final RegExp regex = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+  //    String formatted = intValue.toString().replaceAllMapped(regex, (Match m) => '${m[1]}.');
+      
+  //    return 'Rp. $formatted';
+  //  }
+
+  //  String nominal = formatRupiah(sektor['nominal']);
+
+  //  String markerImage = '';
+  //  if (sektor['indikator']['nama'].contains('Kantor')) {
+  //      markerImage = 'building';
+  //  } else if (sektor['indikator']['nama'].contains('Faskes')) {
+  //      markerImage = 'health';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('PAUD') ||
+  //      sektor['indikator']['nama'].contains('TK') ||
+  //      sektor['indikator']['nama'].contains('SD') ||
+  //      sektor['indikator']['nama'].contains('SMP') ||
+  //      sektor['indikator']['nama'].contains('SMA/SMK') ||
+  //      sektor['indikator']['nama'].contains('Madrasah/Ponpes')
+  //    ) {
+  //      markerImage = 'school';
+  //  } else if (sektor['indikator']['nama'].contains('Jalan')) {
+  //      markerImage = 'road';
+  //  } else if (sektor['indikator']['nama'].contains('Jembatan')) {
+  //      markerImage = 'bride';
+  //  } else if (sektor['indikator']['nama'].contains('Kelistrikan')) {
+  //      markerImage = 'electric';
+  //  } else if (sektor['indikator']['nama'].contains('PDAM/SPAM')) {
+  //      markerImage = 'water';
+  //  } else if (sektor['indikator']['nama'].contains('Gedung Rumah Ibadah')) {
+  //      markerImage = 'religion';
+  //  } else if (sektor['indikator']['nama'].contains('Sungai')) {
+  //      markerImage = 'river';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('Huntara') ||
+  //      sektor['indikator']['nama'].contains('Huntap')
+  //    ) {
+  //      markerImage = 'home';
+  //  } else if (sektor['indikator']['nama'].contains('Pengungsian')) {
+  //      markerImage = 'homes';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('toko diluar pasar') ||
+  //      sektor['indikator']['nama'].contains('Hotel/Penginapan')
+  //    ) {
+  //      markerImage = 'building';
+  //  } else if (sektor['indikator']['nama'].contains('SPBU')) {
+  //      markerImage = 'gas_station';
+  //  } else if (sektor['indikator']['nama'].contains('Gas LPG')) {
+  //      markerImage = 'gas';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('Gedung/Sarpras Pasar') ||
+  //      sektor['indikator']['nama'].contains('Gedung/Sarpras Resto/Warung/Kafe/kedai') ||
+  //      sektor['indikator']['nama'].contains('Koperasi')
+  //    ) {
+  //      markerImage = 'store';
+  //  } else if (sektor['indikator']['nama'].contains('INTERNET')) {
+  //      markerImage = 'help';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('Persawahan') ||
+  //      sektor['indikator']['nama'].contains('Perikanan (Tambak)')
+  //    ) {
+  //      markerImage = 'river';
+  //  } else if (
+  //      sektor['indikator']['nama'].contains('Pembersihan lumpur') ||
+  //      sektor['indikator']['nama'].contains('DTH')
+  //    ) {
+  //      markerImage = 'help';
+  //  }
+  //  markerImage += '.png';
+
+  //  return Container(
+  //    width: 320,
+  //    padding: const EdgeInsets.all(16),
+  //    decoration: BoxDecoration(
+  //      color: const Color(0xFF1A1A1A),
+  //      borderRadius: BorderRadius.circular(12),
+  //      boxShadow: const [
+  //        BoxShadow(blurRadius: 12, color: Colors.black, offset: Offset(0, 4))
+  //      ],
+  //    ),
+  //    child: Stack(
+  //      children: [
+  //        Padding(
+  //          padding: const EdgeInsets.all(16),
+  //          child: Column(
+  //            mainAxisSize: MainAxisSize.min,
+  //            crossAxisAlignment: CrossAxisAlignment.start,
+  //            children: [
+  //              Row(
+  //                children: [
+  //                  AppImage(
+  //                    _getAssetPath('assets/icons/$markerImage'),
+  //                    width: 20,
+  //                    height: 20,
+  //                    fit: BoxFit.contain,
+  //                    errorBuilder: (context, error, stackTrace) {
+  //                      return const Icon(Icons.assignment, color: Colors.tealAccent, size: 20);
+  //                    },
+  //                  ),
+  //                  const SizedBox(width: 12),
+  //                  Expanded(
+  //                    child: Text(
+  //                      namaWilayah,
+  //                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+  //                    ),
+  //                  ),
+  //                ],
+  //              ),
+  //              const SizedBox(height: 12),
+  //              const Divider(color: Colors.white24, height: 1),
+  //              const SizedBox(height: 12),
+  //              Container(
+  //                child: Text(
+  //                  namaSektor,
+  //                  style: const TextStyle(color: Color(0xFF90B6D9), fontSize: 14, fontWeight: FontWeight.w500),
+  //                ),
+  //              ),
+  //              const SizedBox(height: 12),
+  //              const Divider(color: Colors.white24, height: 1),
+  //              const SizedBox(height: 12),
+  //              Container(
+  //                child: Row(
+  //                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //                  children: [
+  //                    const Text(
+  //                      'Nominal Pekerjaan:',
+  //                      style: TextStyle(
+  //                        color: Colors.white,
+  //                        fontSize: 12,
+  //                        fontWeight: FontWeight.w500,
+  //                      ),
+  //                    ),
+  //                    Text(
+  //                      nominal,
+  //                      style: const TextStyle(
+  //                        color: Colors.white,
+  //                        fontSize: 12,
+  //                        fontWeight: FontWeight.w700,
+  //                      ),
+  //                    ),
+  //                  ],
+  //                ),
+  //              )
+  //            ],
+  //          ),
+  //        ),
+  //        Positioned(
+  //          top: 4, 
+  //          right: 4,
+  //          child: IconButton(
+  //            icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+  //            tooltip: 'Tutup',
+  //            onPressed: () {
+  //              _popupLayerController.hideAllPopups();
+  //            },
+  //          ),
+  //        ),
+  //      ],
+  //    ),
+  //  );
+  //}
 
   Widget _buildDalrendukPopup(Marker marker) {
     final sektor = (marker.key as ValueKey).value as Map<String, dynamic>;
 
-    String namaWilayah = 
-      sektor['wilayah']['parent']['parent']['nama'] + ' - ' +sektor['wilayah']['parent']['nama'] + ' - ' + sektor['wilayah']['nama']
-    ;
+    // Safely extract names down the hierarchy tree
+    String provinsi = sektor['wilayah']?['parent']?['parent']?['nama'] ?? '-';
+    String kabupaten = sektor['wilayah']?['parent']?['nama'] ?? '-';
+    String kecamatan = sektor['wilayah']?['nama'] ?? '-';
+    
     String namaSektor = sektor['nama'] ?? '-';
+    
     String formatRupiah(dynamic rawValue) {
       if (rawValue == null) return 'Rp. 0';
-      
       String digitsOnly = rawValue.toString().replaceAll(RegExp(r'[^0-9]'), '');
       if (digitsOnly.isEmpty) return 'Rp. 0';
-      
       final intValue = int.tryParse(digitsOnly) ?? 0;
-      
       final RegExp regex = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
       String formatted = intValue.toString().replaceAllMapped(regex, (Match m) => '${m[1]}.');
-      
       return 'Rp. $formatted';
     }
 
@@ -1463,91 +3192,179 @@ class _MyHomePageState extends State<MyHomePage> {
     }
     markerImage += '.png';
 
+    // Helper builder for metadata items
+    Widget buildMetaRow(String label, String value, {Color? valueColor}) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 110,
+              child: Text(
+                label,
+                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+              ),
+            ),
+            const Text(':', style: TextStyle(color: Colors.white30, fontSize: 11)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                value,
+                style: TextStyle(
+                  color: valueColor ?? Colors.white.withOpacity(0.85),
+                  fontSize: 11,
+                  fontWeight: valueColor != null ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Helper builder for bottom action button row
+    //Widget buildActionButton(String label, IconData icon, VoidCallback onTap) {
+    //  return Expanded(
+    //    child: Padding(
+    //      padding: const EdgeInsets.symmetric(horizontal: 2.0),
+    //      child: OutlinedButton.icon(
+    //        onPressed: onTap,
+    //        icon: Icon(icon, size: 12, color: Colors.white70),
+    //        label: Text(
+    //          label,
+    //          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500),
+    //        ),
+    //        style: OutlinedButton.styleFrom(
+    //          padding: const EdgeInsets.symmetric(vertical: 10),
+    //          side: const BorderSide(color: Colors.white12),
+    //          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+    //          backgroundColor: Colors.white.withOpacity(0.02),
+    //        ),
+    //      ),
+    //    ),
+    //  );
+    //}
+
+    Widget buildActionButton(String label, IconData icon, VoidCallback onTap, {bool isActive = false}) {
+      return Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3.0), // Balanced side padding
+          child: OutlinedButton.icon(
+            onPressed: onTap,
+            icon: Icon(
+              icon, 
+              size: 13, 
+              color: isActive ? Colors.white : Colors.white.withOpacity(0.9),
+            ),
+            label: Text(
+              label,
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.white.withOpacity(0.9), 
+                fontSize: 11, 
+                fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              // Dynamically set background color matching the image reference
+              backgroundColor: isActive ? const Color(0xFF0F172A) : const Color(0xFF334155),
+              // Clean up borders depending on state
+              side: BorderSide(
+                color: isActive ? Colors.white10 : Colors.transparent, 
+                width: 1,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
-      width: 320,
-      padding: const EdgeInsets.all(16),
+      width: 340,
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
-          BoxShadow(blurRadius: 12, color: Colors.black, offset: Offset(0, 4))
+        color: const Color(0xFF1E293B), // Navy-slate background color frame matching screenshot
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white10),
+        boxShadow: [
+          BoxShadow(blurRadius: 16, color: Colors.black.withOpacity(0.6), offset: const Offset(0, 6))
         ],
       ),
-      child: Stack(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 1. Header Panel Row Zone
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(14, 12, 8, 10),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    AppImage(
-                      _getAssetPath('assets/icons/$markerImage'),
-                      width: 20,
-                      height: 20,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(Icons.assignment, color: Colors.tealAccent, size: 20);
-                      },
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        namaWilayah,
-                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                  ],
+                AppImage(
+                  _getAssetPath('assets/icons/$markerImage'),
+                  width: 18,
+                  height: 18,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(Icons.assignment, color: Colors.tealAccent, size: 18);
+                  },
                 ),
-                const SizedBox(height: 12),
-                const Divider(color: Colors.white24, height: 1),
-                const SizedBox(height: 12),
-                Container(
+                const SizedBox(width: 10),
+                Expanded(
                   child: Text(
                     namaSektor,
-                    style: const TextStyle(color: Color(0xFF90B6D9), fontSize: 14, fontWeight: FontWeight.w500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                   ),
                 ),
-                const SizedBox(height: 12),
-                const Divider(color: Colors.white24, height: 1),
-                const SizedBox(height: 12),
-                Container(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Nominal Pekerjaan:',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        nominal,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.close, color: Colors.white38, size: 18),
+                  onPressed: () => _popupLayerController.hideAllPopups(),
+                ),
               ],
             ),
           ),
-          Positioned(
-            top: 4, 
-            right: 4,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white54, size: 20),
-              tooltip: 'Tutup',
-              onPressed: () {
-                _popupLayerController.hideAllPopups();
-              },
+          const Divider(color: Colors.white12, height: 1),
+
+          // 2. Metadata Content Details Zone
+          Padding(
+            padding: const EdgeInsets.all(14.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                buildMetaRow("Provinsi", provinsi),
+                buildMetaRow("Kabupaten", kabupaten),
+                buildMetaRow("Kecamatan", kecamatan),
+                buildMetaRow("Nominal Pekerjaan", nominal, valueColor: const Color(0xFF60A5FA)), // Accent light blue nominal text
+              ],
+            ),
+          ),
+          const Divider(color: Colors.white12, height: 1),
+
+          // 3. Three Bottom Action Buttons Row
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                buildActionButton("Detail", Icons.info_outline, () {
+                  // TODO: Wire up your specific custom detail callback action
+                  setState(() {
+                    _isShowDalrendukPanel = true;                    
+                  });
+                }),
+                buildActionButton("Dokumentasi", Icons.camera_alt_outlined, () {
+                  // TODO: Wire up your image stack dialog viewer action
+                }),
+                buildActionButton("Progres", Icons.trending_up, () {
+                  // TODO: Wire up your chart timeline view list logic action
+                }),
+              ],
             ),
           ),
         ],
@@ -1790,12 +3607,6 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  List<dynamic> _pekerjaanData = [];
-  List<Marker> _pekerjaanMarkers = [];
-
-  List<dynamic> _pekerjaanDalrendukData = [];
-  List<Marker> _pekerjaanDalrendukMarkers = [];
-
   Future<void> _fetchPekerjaanSummary(String kode) async {
     setState(() => _isLoading = true);
 
@@ -1920,18 +3731,72 @@ class _MyHomePageState extends State<MyHomePage> {
                 markerImage = 'help-yellow.png';
             }
 
-            newMarkers.add(
-              Marker(
-                point: LatLng(lat, lng),
-                width: 40,
-                height: 40,
-                key: ValueKey(project), 
+            //newMarkers.add(
+            //  Marker(
+            //    point: LatLng(lat, lng),
+            //    width: 40,
+            //    height: 40,
+            //    key: ValueKey(project), 
+            //    child: AppImage(
+            //      _getAssetPath('assets/icons/$markerImage'),
+            //      fit: BoxFit.contain,
+            //    ),
+            //  ),
+            //);
+            //newMarkers.add(
+            //  Marker(
+            //    point: LatLng(lat, lng),
+            //    width: 40,
+            //    height: 40,
+            //    key: ValueKey(project), 
+            //    child: GestureDetector(
+            //      behavior: HitTestBehavior.opaque,
+            //      onTap: () {
+            //        setState(() {
+            //          // 1. Save the exact project clicked to our tracker variable
+            //          _selectedProjectData = project;
+                      
+            //          // 2. Open up your actual bottom panel sheet
+            //          _isShowDalrendukPanel = true;
+                      
+            //          // 3. Switch the content view directly over to your information tab (Case 1)
+            //          selectedTab = 1; 
+            //        });
+            //      },
+            //      child: AppImage(
+            //        _getAssetPath('assets/icons/$markerImage'),
+            //        fit: BoxFit.contain,
+            //      ),
+            //    ),
+            //  ),
+            //);
+            // 1. Declare the unique marker variable first so it can be passed into its own onTap method safely.
+            // Declare the single marker variable to reference it in its own tap closure cleanly
+            late final Marker uniqueMarker;
+            
+            uniqueMarker = Marker(
+              point: LatLng(lat, lng),
+              width: 40,
+              height: 40,
+              key: ValueKey(project), 
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  setState(() {
+                    // Cache the clicked map entry directly into your state data pointer
+                    _selectedProjectData = project;
+                  });
+                  // Show the overlay window widget anchor over this active point
+                  _popupLayerController.togglePopup(uniqueMarker);
+                },
                 child: AppImage(
                   _getAssetPath('assets/icons/$markerImage'),
                   fit: BoxFit.contain,
                 ),
               ),
             );
+
+            newMarkers.add(uniqueMarker);
           }
         }
       }
@@ -1947,83 +3812,6 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() => _isLoading = false);
     }
   }
-
-  //Future<void> _loadWilayahPanelData(String parentCode, String parentName) async {
-  //  try {
-  //    setState(() {
-  //      _isLoading = true;
-  //      _currentLevel += 1;
-  //    });
-
-  //    String auth = 'Basic ${base64Encode(utf8.encode('aingExcel:machinegunkelly'))}';
-  //    final response = await http.get(
-  //      Uri.parse('https://geopas.satgasprr.go.id/api/excel/wilayah/${_currentLevel == 4 ? 3 : _currentLevel}/$parentCode'),
-  //      headers: {'Authorization': auth},
-  //    );
-
-  //    if (response.statusCode == 200) {
-  //      List<dynamic> areas = json.decode(response.body);
-  //      setState(() {
-  //        _panelWilayahOptionalData.clear();
-  //        _panelWilayahCounterNormal = 0;
-  //        _panelWilayahCounterMendekati = 0;
-  //        _panelWilayahCounterAtensi = 0;
-          
-  //        _panelWilayahOptionalData.add({
-  //          'kode': '0',
-  //          'nama': 'All',
-  //          'kondisi': 'Normal'
-  //        });
-
-  //        for (var area in areas) {
-  //          if (area['kondisi'] == 'Normal') {
-  //            _panelWilayahCounterNormal += 1;
-  //          } else if(area['kondisi'] == 'Mendekati') {
-  //            _panelWilayahCounterMendekati += 1;
-  //          } else if(area['kondisi'] == 'Atensi') {
-  //            _panelWilayahCounterAtensi += 1;
-  //          } else {
-  //            _panelWilayahCounterNormal += 1;
-  //          }
-
-  //          _panelWilayahOptionalData.add({
-  //            'kode': area['kode'].toString(),
-  //            'nama': area['nama'].toString(),
-  //            'kondisi': area['kondisi']?.toString() ?? 'Normal',
-  //          });
-  //        }
-  //      });  
-
-  //      switch (_currentLevel) {
-  //        case 3:
-  //          setState(() {
-  //            _selectedOptionKabupaten = parentName;
-  //            _selectedRegencyId = parentCode;
-  //          });
-  //        break;
-
-  //        case 4:
-  //          setState(() {
-  //            _selectedOptionKecamatan = parentName;
-  //          });
-  //        break;
-
-  //        default:
-  //      }
-
-  //      _fetchWilayahData(_currentLevel, parentCode);
-
-  //      debugPrint('level now'+_currentLevel.toString());
-
-  //    } else {
-  //      throw Exception();
-  //    }
-  //  } catch (e) {
-  //    _showErrorSnippet("Gagal mengambil data Level $_currentLevel.");
-  //  } finally {
-  //    setState(() => _isLoading = false);
-  //  }
-  //}
 
   Future<void> _loadWilayahPanelData(String parentCode, String parentName) async {
     try {
@@ -2049,7 +3837,7 @@ class _MyHomePageState extends State<MyHomePage> {
           if (_currentLevel == 1) {
             areas = allCachedData.where((area) => area['parent_kode'] == null).toList();
           } else {
-            areas = allCachedData.where((area) {
+            areas = allCachedData.where((area) {;
               return area['parent_kode']?.toString().trim() == parentCode.trim();
             }).toList();
           }
@@ -2806,6 +4594,7 @@ class _MyHomePageState extends State<MyHomePage> {
                               snap: PopupSnap.markerTop, 
                               builder: (BuildContext context, Marker marker) {
                                 final dataPayload = (marker.key as ValueKey).value as Map<String, dynamic>;
+                                //debugPrint(dataPayload.toString());
                                 
                                 if (dataPayload.containsKey('list_alokasi')) {
                                   return _buildTkdPopupCard(context, dataPayload);
@@ -2855,6 +4644,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         _tkdData.clear();
                         _pekerjaanDalrendukData.clear();
                         _pekerjaanDalrendukMarkers.clear();
+                        _selectedIndikatorCategory = null;
                       }),
                     ),
                     const SizedBox(height: 16),
@@ -2888,6 +4678,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           _allTkdMarkersMasterList.clear();
                           _tkdMarkers.clear();
                           _tkdData.clear();
+                          _selectedIndikatorCategory = null;
                         });
 
                         _currentTileUrl = arcgisDefault;
@@ -2912,6 +4703,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
                         _showMonitorButton = 'tkd';
                         _currentTileUrl = arcgisSatellite;
+                        _selectedIndikatorCategory = null;
                       }),
                     ),
                   ],
@@ -3326,308 +5118,601 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
 
-            if (_isShowProjectDetailPanel && _selectedProjectDetail != null)
-              Positioned(
-                top: 20,
-                right: 40,
-                bottom: 20,
-                child: Container(
-                  width: 700, 
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1208).withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  child: Row(
-                    children: [
-                      
-                      Container(
-                        width: 180,
-                        padding: const EdgeInsets.all(15),
-                        color: Colors.black26,
+          if (_isShowProjectDetailPanel && _selectedProjectDetail != null)
+            Positioned(
+              top: 20,
+              right: 40,
+              bottom: 20,
+              child: Container(
+                width: 700, 
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1208).withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Row(
+                  children: [
+                    
+                    Container(
+                      width: 180,
+                      padding: const EdgeInsets.all(15),
+                      color: Colors.black26,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_selectedProjectDetail!['nama'] ?? '-', 
+                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 20),
+                          _buildSidebarItem("Informasi", isActive: true),
+                          _buildSidebarItem("Penyedia"),
+                          _buildSidebarItem("Rincian"),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(_selectedProjectDetail!['nama'] ?? '-', 
-                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 20),
-                            _buildSidebarItem("Informasi", isActive: true),
-                            _buildSidebarItem("Penyedia"),
-                            _buildSidebarItem("Rincian"),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text("Informasi Paket Pekerjaan",
-                                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                                  IconButton(
-                                    icon: const Icon(Icons.close, color: Colors.white),
-                                    onPressed: () => setState(() => _isShowProjectDetailPanel = false),
-                                  )
-                                ],
-                              ),
-                              const Divider(color: Colors.white24),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text("Informasi Paket Pekerjaan",
+                                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                IconButton(
+                                  icon: const Icon(Icons.close, color: Colors.white),
+                                  onPressed: () => setState(() => _isShowProjectDetailPanel = false),
+                                )
+                              ],
+                            ),
+                            const Divider(color: Colors.white24),
 
-                              Expanded(
-                                child: Theme(
-                                  data: Theme.of(context).copyWith(
-                                    scrollbarTheme: ScrollbarThemeData(
-                                      thumbColor: WidgetStateProperty.all(Colors.white.withOpacity(0.5)),
-                                      trackColor: WidgetStateProperty.all(Colors.white10),
-                                      interactive: true,
-                                    ),
+                            Expanded(
+                              child: Theme(
+                                data: Theme.of(context).copyWith(
+                                  scrollbarTheme: ScrollbarThemeData(
+                                    thumbColor: WidgetStateProperty.all(Colors.white.withOpacity(0.5)),
+                                    trackColor: WidgetStateProperty.all(Colors.white10),
+                                    interactive: true,
                                   ),
-                                  child: Scrollbar(
-                                    thumbVisibility: true,
-                                    thickness: 6.0,
-                                    radius: const Radius.circular(10),
-                                    child: SingleChildScrollView(
-                                      physics: const BouncingScrollPhysics(),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          _buildDataRow("Tahun Anggaran", _selectedProjectDetail?['tahun_anggaran'] ?? '-'),
-                                          _buildDataRow("Nama Paket", _selectedProjectDetail?['nama'] ?? '-'),
-                                          _buildDataRow("Program", _selectedProjectDetail?['nama_program'] ?? '-'),
-                                          _buildDataRow("Kegiatan / Sub", _selectedProjectDetail?['nama_kegiatan'] ?? '-'),
-                                          _buildDataRow("Kategori", _selectedProjectDetail?['kategori_paket_pekerjaan']?['nama'] ?? '-'),
-                                          _buildDataRow("Indikator", _selectedProjectDetail?['indikator']?['nama'] ?? '-'),
-                                          _buildDataRow("Wilayah", _selectedProjectDetail?['wilayah']?['nama'] ?? '-'),
-                                          _buildDataRow("Koordinat", "${_selectedProjectDetail?['latitude'] ?? '0'}, ${_selectedProjectDetail?['longitude'] ?? '0'}"),
-                                          
-                                          const SizedBox(height: 20),
-                                          const Text("Informasi Pengadaan",
-                                              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                                          const Divider(color: Colors.white24),
-                                          
-                                          _buildDataRow("Nilai pagu", _selectedProjectDetail?['nilai_pagu'] ?? '0'),
-                                          _buildDataRow("Nilai kontrak", _selectedProjectDetail?['nilai_kontrak'] ?? '0'),
-                                          _buildDataRow("Nama rekening", _selectedProjectDetail?['nama_rekening'] ?? '-'),
-                                          _buildDataRow("Nama penyedia", _selectedProjectDetail?['penyedia'] ?? '-'),
-                                          _buildDataRow("No. Kontrak", _selectedProjectDetail?['no_kontrak'] ?? '-'),
-                                          _buildDataRow("Masa pelaksanaan", '${_selectedProjectDetail?['tgl_awal_kontrak'] ?? ""} s/d ${_selectedProjectDetail?['tgl_akhir_kontrak'] ?? ""}'),
-                                          _buildDataRow("Keterangan", _selectedProjectDetail?['keterangan'] ?? '-'),
-                                          const SizedBox(height: 20),
-                                        ],
-                                      ),
+                                ),
+                                child: Scrollbar(
+                                  thumbVisibility: true,
+                                  thickness: 6.0,
+                                  radius: const Radius.circular(10),
+                                  child: SingleChildScrollView(
+                                    physics: const BouncingScrollPhysics(),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _buildDataRow("Tahun Anggaran", _selectedProjectDetail?['tahun_anggaran'] ?? '-'),
+                                        _buildDataRow("Nama Paket", _selectedProjectDetail?['nama'] ?? '-'),
+                                        _buildDataRow("Program", _selectedProjectDetail?['nama_program'] ?? '-'),
+                                        _buildDataRow("Kegiatan / Sub", _selectedProjectDetail?['nama_kegiatan'] ?? '-'),
+                                        _buildDataRow("Kategori", _selectedProjectDetail?['kategori_paket_pekerjaan']?['nama'] ?? '-'),
+                                        _buildDataRow("Indikator", _selectedProjectDetail?['indikator']?['nama'] ?? '-'),
+                                        _buildDataRow("Wilayah", _selectedProjectDetail?['wilayah']?['nama'] ?? '-'),
+                                        _buildDataRow("Koordinat", "${_selectedProjectDetail?['latitude'] ?? '0'}, ${_selectedProjectDetail?['longitude'] ?? '0'}"),
+                                        
+                                        const SizedBox(height: 20),
+                                        const Text("Informasi Pengadaan",
+                                            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                        const Divider(color: Colors.white24),
+                                        
+                                        _buildDataRow("Nilai pagu", _selectedProjectDetail?['nilai_pagu'] ?? '0'),
+                                        _buildDataRow("Nilai kontrak", _selectedProjectDetail?['nilai_kontrak'] ?? '0'),
+                                        _buildDataRow("Nama rekening", _selectedProjectDetail?['nama_rekening'] ?? '-'),
+                                        _buildDataRow("Nama penyedia", _selectedProjectDetail?['penyedia'] ?? '-'),
+                                        _buildDataRow("No. Kontrak", _selectedProjectDetail?['no_kontrak'] ?? '-'),
+                                        _buildDataRow("Masa pelaksanaan", '${_selectedProjectDetail?['tgl_awal_kontrak'] ?? ""} s/d ${_selectedProjectDetail?['tgl_akhir_kontrak'] ?? ""}'),
+                                        _buildDataRow("Keterangan", _selectedProjectDetail?['keterangan'] ?? '-'),
+                                        const SizedBox(height: 20),
+                                      ],
                                     ),
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      )
-                    ],
-                  ),
+                      ),
+                    )
+                  ],
                 ),
               ),
+            ),
 
-            if (_isShowTkdPanel)
-              Positioned(
-                top: 10,
-                right: 40,
-                bottom: 20,
-                child: Container(
-                  width: 700,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF211505).withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white12),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withOpacity(0.5),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4)),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              "Analisa Penyaluran Transfer Ke Daerah (TKD ) PROV dan Kabupaten/Kota Terdampak Bencana Sumatera dan Aceh",
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold),
-                            ),
+          if (_isShowTkdPanel)
+            Positioned(
+              top: 10,
+              right: 40,
+              bottom: 20,
+              child: Container(
+                width: 700,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF211505).withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white12),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.5),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4)),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            "Analisa Penyaluran Transfer Ke Daerah (TKD ) PROV dan Kabupaten/Kota Terdampak Bencana Sumatera dan Aceh",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold),
                           ),
-                          IconButton(
-                            onPressed: () =>
-                                setState(() => _isShowTkdPanel = false),
-                            icon: const Icon(Icons.close,
-                                color: Colors.white60, size: 20),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildPanelDropdown(
-                              hint: "Prop :",
-                              value: _selectedOptionProv,
-                              items: _optionProvinces,
-                              onChanged: (String? newId) {
-                                setState(() {
-                                  _selectedOptionProv = newId;
-                                  _currentLevel = 1;
-                                  _selectedOptionKabupaten = '';
-                                  _selectedOptionKecamatan = '';
-                                  if (newId != null && newId != 'All') {
-                                    _selectedProvinceId = newId;
-                                    _loadWilayahPanelData(newId, '');
-                                  } else {
-                                    _selectedProvinceId = null;
-                                    _currentMarkers = [];
-                                    _loadInitialData();
-                                  }
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Container(
-                              height: 35,
-                              color: Colors.white10,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  Text("$_selectedOptionKabupaten", style: const TextStyle(color: Colors.white, fontSize: 11)),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Container(
-                              height: 35,
-                              color: Colors.white10,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  Text("$_selectedOptionKecamatan", style: const TextStyle(color: Colors.white, fontSize: 11)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white10),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Builder(
-                            builder: (context) {
-                              List<dynamic> displayList = [];
-                              if (_selectedOptionProv == null || _selectedOptionProv == 'All' || _selectedOptionProv == '') {
-                                displayList = List.from(_tkdData);
-                              } else {
-                                displayList = _tkdData.where((item) {
-                                  final wilayah = item['wilayah'] ?? {};
-                                  return wilayah['parent_kode']?.toString() == _selectedOptionProv.toString() ||
-                                         wilayah['kode']?.toString() == _selectedOptionProv.toString();
-                                }).toList();
-                              }
-
-                              String formatRawNum(dynamic val) {
-                                if (val == null) return "0";
-                                double numVal = double.tryParse(val.toString()) ?? 0.0;
-                                RegExp reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
-                                return numVal.toStringAsFixed(0).replaceAllMapped(reg, (Match match) => '${match[1]},');
-                              }
-
-                              return Column(
-                                children: [
-                                  Container(
-                                    color: Colors.white.withOpacity(0.05),
-                                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                                    child: const Row(
-                                      children: [
-                                        Expanded(flex: 1, child: Text("No", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
-                                        Expanded(flex: 3, child: Text("Pemerintah daerah", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
-                                        Expanded(flex: 2, child: Text("TKD 2026", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
-                                        Expanded(flex: 2, child: Text("Penyesuaian TKD 2026", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
-                                        Expanded(flex: 3, child: Text("Total TKD setelah penyesuaian", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
-                                      ],
-                                    ),
-                                  ),
-                                  
-                                  Expanded(
-                                    child: displayList.isEmpty
-                                        ? const Center(
-                                            child: Text(
-                                              "Tidak ada data TKD tersedia untuk filter ini.",
-                                              style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic),
-                                            ),
-                                          )
-                                        : ListView.separated(
-                                            padding: EdgeInsets.zero,
-                                            itemCount: displayList.length,
-                                            separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
-                                            itemBuilder: (context, index) {
-                                              final rowItem = displayList[index];
-                                              final wilayah = rowItem['wilayah'] ?? {};
-                                              
-                                              double ang2026 = double.tryParse(rowItem['anggaran_2026']?.toString() ?? '0') ?? 0.0;
-                                              double penyesuaian = double.tryParse(rowItem['penyesuaian']?.toString() ?? '0') ?? 0.0;
-                                              double totalAkhir = ang2026 + penyesuaian;
-
-                                              return Container(
-                                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                                                color: index % 2 == 0 ? Colors.transparent : Colors.white.withOpacity(0.02),
-                                                child: Row(
-                                                  children: [
-                                                    Expanded(flex: 1, child: Text("${index + 1}", style: const TextStyle(color: Colors.white70, fontSize: 11))),
-                                                    Expanded(flex: 3, child: Text(wilayah['nama'] ?? '-', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
-                                                    Expanded(flex: 2, child: Text(formatRawNum(ang2026), style: const TextStyle(color: Colors.white70, fontSize: 11))),
-                                                    Expanded(flex: 2, child: Text(formatRawNum(penyesuaian), style: const TextStyle(color: Colors.amberAccent, fontSize: 11))),
-                                                    Expanded(flex: 3, child: Text(formatRawNum(totalAkhir), style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold))),
-                                                  ],
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                  ),
-                                ],
-                              );
+                        ),
+                        IconButton(
+                          onPressed: () =>
+                              setState(() => _isShowTkdPanel = false),
+                          icon: const Icon(Icons.close,
+                              color: Colors.white60, size: 20),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildPanelDropdown(
+                            hint: "Prop :",
+                            value: _selectedOptionProv,
+                            items: _optionProvinces,
+                            onChanged: (String? newId) {
+                              setState(() {
+                                _selectedOptionProv = newId;
+                                _currentLevel = 1;
+                                _selectedOptionKabupaten = '';
+                                _selectedOptionKecamatan = '';
+                                if (newId != null && newId != 'All') {
+                                  _selectedProvinceId = newId;
+                                  _loadWilayahPanelData(newId, '');
+                                } else {
+                                  _selectedProvinceId = null;
+                                  _currentMarkers = [];
+                                  _loadInitialData();
+                                }
+                              });
                             },
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            height: 35,
+                            color: Colors.white10,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Text("$_selectedOptionKabupaten", style: const TextStyle(color: Colors.white, fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            height: 35,
+                            color: Colors.white10,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Text("$_selectedOptionKecamatan", style: const TextStyle(color: Colors.white, fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white10),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Builder(
+                          builder: (context) {
+                            List<dynamic> displayList = [];
+                            if (_selectedOptionProv == null || _selectedOptionProv == 'All' || _selectedOptionProv == '') {
+                              displayList = List.from(_tkdData);
+                            } else {
+                              displayList = _tkdData.where((item) {
+                                final wilayah = item['wilayah'] ?? {};
+                                return wilayah['parent_kode']?.toString() == _selectedOptionProv.toString() ||
+                                       wilayah['kode']?.toString() == _selectedOptionProv.toString();
+                              }).toList();
+                            }
+
+                            String formatRawNum(dynamic val) {
+                              if (val == null) return "0";
+                              double numVal = double.tryParse(val.toString()) ?? 0.0;
+                              RegExp reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+                              return numVal.toStringAsFixed(0).replaceAllMapped(reg, (Match match) => '${match[1]},');
+                            }
+
+                            return Column(
+                              children: [
+                                Container(
+                                  color: Colors.white.withOpacity(0.05),
+                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                                  child: const Row(
+                                    children: [
+                                      Expanded(flex: 1, child: Text("No", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                      Expanded(flex: 3, child: Text("Pemerintah daerah", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                      Expanded(flex: 2, child: Text("TKD 2026", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                      Expanded(flex: 2, child: Text("Penyesuaian TKD 2026", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                      Expanded(flex: 3, child: Text("Total TKD setelah penyesuaian", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))),
+                                    ],
+                                  ),
+                                ),
+                                
+                                Expanded(
+                                  child: displayList.isEmpty
+                                      ? const Center(
+                                          child: Text(
+                                            "Tidak ada data TKD tersedia untuk filter ini.",
+                                            style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic),
+                                          ),
+                                        )
+                                      : ListView.separated(
+                                          padding: EdgeInsets.zero,
+                                          itemCount: displayList.length,
+                                          separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+                                          itemBuilder: (context, index) {
+                                            final rowItem = displayList[index];
+                                            final wilayah = rowItem['wilayah'] ?? {};
+                                            
+                                            double ang2026 = double.tryParse(rowItem['anggaran_2026']?.toString() ?? '0') ?? 0.0;
+                                            double penyesuaian = double.tryParse(rowItem['penyesuaian']?.toString() ?? '0') ?? 0.0;
+                                            double totalAkhir = ang2026 + penyesuaian;
+
+                                            return Container(
+                                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                                              color: index % 2 == 0 ? Colors.transparent : Colors.white.withOpacity(0.02),
+                                              child: Row(
+                                                children: [
+                                                  Expanded(flex: 1, child: Text("${index + 1}", style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                                                  Expanded(flex: 3, child: Text(wilayah['nama'] ?? '-', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+                                                  Expanded(flex: 2, child: Text(formatRawNum(ang2026), style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                                                  Expanded(flex: 2, child: Text(formatRawNum(penyesuaian), style: const TextStyle(color: Colors.amberAccent, fontSize: 11))),
+                                                  Expanded(flex: 3, child: Text(formatRawNum(totalAkhir), style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold))),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              )
+              ),
+            ),
+  
+          if (_isShowDalrendukPanel)
+            Positioned(
+              top: 10,
+              right: 40,
+              child: Container(
+                width: 1300,
+                height: 780,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0B0F14).withOpacity(0.96),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white10,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black54,
+                      blurRadius: 18,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // LEFT SIDEBAR
+                        Container(
+                          width: 260,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: Colors.white10,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'No.',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+
+                              const SizedBox(height: 2),
+
+                              const Text(
+                                'Terbersihkannya objek ODCB',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 18,
+                                ),
+                              ),
+
+                              const Text(
+                                '-',
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                ),
+                              ),
+
+                              const SizedBox(height: 18),
+
+                              Container(
+                                height: 18,
+                                decoration: BoxDecoration(
+                                  color: Colors.white10,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+
+                              const SizedBox(height: 22),
+
+                              _menuItem(
+                                title: 'Grafik Pekerjaan',
+                                selected: selectedTab == 0,
+                                onTap: () {
+                                  setState(() {
+                                    selectedTab = 0;
+                                  });
+                                },
+                              ),
+
+                              _menuItem(
+                                title: 'Informasi',
+                                selected: selectedTab == 1,
+                                onTap: () {
+                                  setState(() {
+                                    selectedTab = 1;
+                                  });
+                                },
+                              ),
+
+                              _menuItem(
+                                title: 'Penyedia',
+                                selected: selectedTab == 2,
+                                onTap: () {
+                                  setState(() {
+                                    selectedTab = 2;
+                                  });
+                                },
+                              ),
+
+                              _menuItem(
+                                title: 'Rincian',
+                                selected: selectedTab == 3,
+                                onTap: () {
+                                  setState(() {
+                                    selectedTab = 3;
+                                  });
+                                },
+                              ),
+
+                              _menuItem(
+                                title: 'Timeline',
+                                selected: selectedTab == 4,
+                                onTap: () {
+                                  setState(() {
+                                    selectedTab = 4;
+                                  });
+                                },
+                              ),
+
+                              _menuItem(
+                                title: 'Realisasi',
+                                selected: selectedTab == 5,
+                                onTap: () {
+                                  setState(() {
+                                    selectedTab = 5;
+                                  });
+                                },
+                              ),
+
+                              _menuItem(
+                                title: 'Pembayaran',
+                                selected: selectedTab == 6,
+                                onTap: () {
+                                  setState(() {
+                                    selectedTab = 6;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(width: 12),
+
+                        // RIGHT CONTENT
+                        //Expanded(
+                        //  child: Column(
+                        //    children: [
+                        //      Row(
+                        //        children: [
+                        //          Expanded(
+                        //            child: _topCard(
+                        //              title: 'Realisasi Keuangan',
+                        //              value: 'Rp. 0',
+                        //            ),
+                        //          ),
+
+                        //          const SizedBox(width: 18),
+
+                        //          Expanded(
+                        //            child: _topCard(
+                        //              title: 'Realisasi Fisik',
+                        //              value: '-',
+                        //            ),
+                        //          ),
+
+                        //          const SizedBox(width: 18),
+
+                        //          Expanded(
+                        //            child: _topCard(
+                        //              title: 'Realisasi Waktu',
+                        //              value: '-',
+                        //            ),
+                        //          ),
+                        //        ],
+                        //      ),
+
+                        //      const SizedBox(height: 18),
+
+                        //      Container(
+                        //        width: double.infinity,
+                        //        height: 120,
+                        //        padding: const EdgeInsets.all(20),
+                        //        decoration: BoxDecoration(
+                        //          borderRadius: BorderRadius.circular(14),
+                        //          border: Border.all(
+                        //            color: Colors.white10,
+                        //          ),
+                        //        ),
+                        //        child: const Column(
+                        //          crossAxisAlignment: CrossAxisAlignment.start,
+                        //          children: [
+                        //            Text(
+                        //              'Grafik Realisasi Terharap Timeline',
+                        //              style: TextStyle(
+                        //                color: Colors.white,
+                        //                fontSize: 18,
+                        //              ),
+                        //            ),
+
+                        //            SizedBox(height: 8),
+
+                        //            Text(
+                        //              '-',
+                        //              style: TextStyle(
+                        //                color: Colors.white54,
+                        //                fontSize: 18,
+                        //              ),
+                        //            ),
+                        //          ],
+                        //        ),
+                        //      ),
+                        //    ],
+                        //  ),
+                        //),
+                        Expanded(
+                          child: _buildTabContent(),
+                        ),
+                      ],
+                    ),
+
+                    // CLOSE BUTTON
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _isShowDalrendukPanel = false;                          
+                          });
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(
+                            Icons.close,
+                            color: Color(0xFFD2A86A),
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
         ],
       ),
     );
   }
 }
+
+//void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
+//  final String rawJson = params['jsonString'];
+//  final SendPort sendPort = params['sendPort'];
+
+//  try {
+//    final Map<String, dynamic> decodedData = json.decode(rawJson);
+//    final List<dynamic> listIndikator = decodedData['list_indikator'] ?? [];
+
+//    List<dynamic> chunkBatch = [];
+
+//    for (var indikator in listIndikator) {
+//      List<dynamic> listSektor = indikator['list_sektor_terdampak'] ?? [];
+//      for (var sektor in listSektor) {
+        
+//        double? lat = double.tryParse(sektor['latitude']?.toString() ?? '');
+//        double? lng = double.tryParse(sektor['longitude']?.toString() ?? '');
+
+//        if (lat != null && lng != null) {
+//          chunkBatch.add(sektor);
+
+//          if (chunkBatch.length >= 20) {
+//            sendPort.send(List.from(chunkBatch));
+//            chunkBatch.clear();
+//          }
+//        }
+//      }
+//    }
+
+//    if (chunkBatch.isNotEmpty) {
+//      sendPort.send(chunkBatch);
+//    }
+//  } catch (e) {
+//    sendPort.send({'isolate_error': e.toString()});
+//  } finally {
+//    sendPort.send('DONE');
+//  }
+//}
 
 void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
   final String rawJson = params['jsonString'];
@@ -3640,6 +5725,9 @@ void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
     List<dynamic> chunkBatch = [];
 
     for (var indikator in listIndikator) {
+      // 1. Get the parent indicator's title name
+      final String parentIndikatorNama = (indikator['nama'] ?? '').toString().trim();
+      
       List<dynamic> listSektor = indikator['list_sektor_terdampak'] ?? [];
       for (var sektor in listSektor) {
         
@@ -3647,6 +5735,11 @@ void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
         double? lng = double.tryParse(sektor['longitude']?.toString() ?? '');
 
         if (lat != null && lng != null) {
+          // ===================================================================
+          // NEW STEP: Inject parent title name into the map object
+          // ===================================================================
+          sektor['parent_indikator_nama'] = parentIndikatorNama;
+
           chunkBatch.add(sektor);
 
           if (chunkBatch.length >= 20) {
@@ -3657,12 +5750,14 @@ void parseIndikatorJsonIsolate(Map<String, dynamic> params) {
       }
     }
 
+    // Flush any remaining items in the buffer
     if (chunkBatch.isNotEmpty) {
-      sendPort.send(chunkBatch);
+      sendPort.send(List.from(chunkBatch));
+      chunkBatch.clear();
     }
+
+    sendPort.send('DONE');
   } catch (e) {
     sendPort.send({'isolate_error': e.toString()});
-  } finally {
-    sendPort.send('DONE');
   }
 }
