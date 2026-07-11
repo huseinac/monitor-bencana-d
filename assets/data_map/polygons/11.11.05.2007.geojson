@@ -1,0 +1,10 @@
+{
+"type": "FeatureCollection",
+"name": "KDEPUM_11",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::9518" } },
+"xy_coordinate_resolution": 1e-15,
+"z_coordinate_resolution": 1e-15,
+"features": [
+{ "type": "Feature", "properties": { "OBJECTID": 7262, "NAMOBJ": "Blang Asan", "FCODE": "BA03070040", "REMARK": " ", "METADATA": "TASWIL1000020221102_DATA_BATAS_DESAKELURAHAN", "SRS_ID": "4326", "KDBBPS": " ", "KDCBPS": " ", "KDCPUM": "11.11.05", "KDEBPS": " ", "KDEPUM": "11.11.05.2007", "KDPBPS": " ", "KDPKAB": "11.11", "KDPPUM": "11", "LUASWH": 0.0, "TIPADM": 1, "WADMKC": "Peusangan", "WADMKD": "Blang Asan", "WADMKK": "Bireuen", "WADMPR": "Aceh", "WIADKC": " ", "WIADKK": " ", "WIADPR": " ", "WIADKD": " ", "UUPP": "Hasil Delineasi Batas Desa 2019", "luas": 0.128444334833, "SHAPE_Length": 0.01330583743572992, "SHAPE_Area": 1.0476863617731955e-05, "LAYER": "ADMINISTRASI_AR_DESAKEL" }, "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 96.803008230000046, 5.199334188000023, 0.0 ], [ 96.803574552000043, 5.199196277000055, 0.0 ], [ 96.803951296000037, 5.19907962000002, 0.0 ], [ 96.80361619200005, 5.197225489000061, 0.0 ], [ 96.803939799000034, 5.197136853000075, 0.0 ], [ 96.803786324000043, 5.19551763000004, 0.0 ], [ 96.802654740000037, 5.195696030000022, 0.0 ], [ 96.800555165000048, 5.195979401000045, 0.0 ], [ 96.801328340000055, 5.19917724000004, 0.0 ], [ 96.801737608000053, 5.19964361500007, 0.0 ], [ 96.803008230000046, 5.199334188000023, 0.0 ] ] ] ] } }
+]
+}
