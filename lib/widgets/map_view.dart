@@ -80,6 +80,8 @@ class MapView extends StatefulWidget {
 class MapViewState extends State<MapView> {
   final MapController _mapController = MapController();
 
+  DateTime _lastHoverCheck = DateTime.now();
+
   List<ClickablePolygon> _areaPolygons = [];
   List<Marker> _areaMarker = [];
   String? _hoveredCode;
@@ -376,10 +378,20 @@ class MapViewState extends State<MapView> {
     }
   }
 
+  //void handleMapTap(LatLng point) {
+  //  for (int i = _areaPolygons.length - 1; i >= 0; i--) {
+  //    final cp = _areaPolygons[i];
+  //    if (_isPointInPolygon(point, cp.polygon.points)) {
+  //      _onAreaClicked(cp.code, cp.center);
+  //      return;
+  //    }
+  //  }
+  //}
+
   void handleMapTap(LatLng point) {
     for (int i = _areaPolygons.length - 1; i >= 0; i--) {
       final cp = _areaPolygons[i];
-      if (_isPointInPolygon(point, cp.polygon.points)) {
+      if (cp.contains(point)) {
         _onAreaClicked(cp.code, cp.center);
         return;
       }
@@ -411,9 +423,10 @@ class MapViewState extends State<MapView> {
           initialZoom: 7.0,
           onTap: (tapPos, point) => handleMapTap(point),
           onPointerHover: (event, point) {
-            //final now = DateTime.now();
-            //if (now.difference(_lastHoverCheck).inMilliseconds < 40) return;
-            //_lastHoverCheck = now;
+            final now = DateTime.now();
+            // Throttle hover checks to ~60 FPS (16ms interval)
+            if (now.difference(_lastHoverCheck).inMilliseconds < 16) return;
+            _lastHoverCheck = now;
 
             String? hitCode;
             for (var cp in _areaPolygons) {

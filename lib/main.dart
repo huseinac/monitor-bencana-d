@@ -5,6 +5,9 @@ import 'controllers/wilayah_selection_controller.dart';
 import 'controllers/indikator_controller.dart';
 import 'controllers/paket_pekerjaan_controller.dart';
 import 'controllers/pekerjaan_controller.dart';
+import 'controllers/status_anggaran_controller.dart';
+import 'controllers/status_pelaksanaan_controller.dart';
+import 'controllers/kategori_paket_pekerjaan_controller.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +37,15 @@ void main() {
             pekerjaanController!.updateWilayahSelection(wilayahSelection);
             return pekerjaanController;
           },
+        ),
+        ChangeNotifierProvider(
+          create: (_) => StatusAnggaranController(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => StatusPelaksanaanController(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => KategoriPaketPekerjaanController(),
         ),
       ],
       child: const MyApp(), // wraps HomeView further down

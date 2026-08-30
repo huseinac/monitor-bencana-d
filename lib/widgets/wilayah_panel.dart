@@ -139,7 +139,6 @@ class WilayahPanelState extends State<WilayahPanel> {
                 ),
               ),
               IconButton(
-                // Notice how you access variables from the top class using "widget."
                 onPressed: widget.onClose, 
                 icon: const Icon(Icons.close, color: Colors.black, size: 20),
                 padding: EdgeInsets.zero,

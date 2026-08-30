@@ -20,6 +20,9 @@ import '../widgets/pekerjaan_renduk_detail_panel.dart';
 import '../controllers/indikator_controller.dart';
 import '../controllers/paket_pekerjaan_controller.dart';
 import '../controllers/pekerjaan_controller.dart';
+import '../controllers/status_anggaran_controller.dart';
+import '../controllers/status_pelaksanaan_controller.dart';
+import '../controllers/kategori_paket_pekerjaan_controller.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -54,6 +57,9 @@ class HomeViewState extends State<HomeView> {
       await context.read<WilayahSelectionController>().ensureDataLoaded();
       await context.read<IndikatorController>().loadIndikatorData();
       await context.read<PekerjaanController>().loadPekerjaanData();
+      await context.read<StatusAnggaranController>().loadStatusAnggaranData();
+      await context.read<StatusPelaksanaanController>().loadStatusPelaksanaanData();
+      await context.read<KategoriPaketPekerjaanController>().loadKategoriPaketPekerjaanData();
       _periksaDataOfflinePadaStartup();
     });
   }
@@ -221,9 +227,6 @@ class HomeViewState extends State<HomeView> {
 
     switch (context) {
       case "update":
-        debugPrint("============================================");
-        debugPrint('qweqwe');
-        debugPrint("============================================");
         await paketPekerjaan.loadPaketData(forceReload: true);
         await paketPekerjaan.generateMarkers();
         paketPekerjaan.setMarkersVisible(true);
@@ -264,6 +267,18 @@ class HomeViewState extends State<HomeView> {
               key: mapView,
               mapStyle: _mapStyle,
               showLoading: showLoading,
+            ),
+          ),
+
+          Positioned(
+            bottom: 50,
+            right: 70,
+            child: FloatingActionButton.extended(
+              onPressed: _downloadAllJson,
+              label: const Text("Unduh data"),
+              icon: const Icon(Icons.download),
+              backgroundColor: Color(0xFF22467a),
+              foregroundColor: Colors.white,
             ),
           ),
 
@@ -432,18 +447,6 @@ class HomeViewState extends State<HomeView> {
                 if (!controller.isDetailPanelVisible) return const SizedBox.shrink();
                 return const PekerjaanRendukDetailPanel();
               },
-            ),
-          ),
-
-          Positioned(
-            bottom: 50,
-            right: 70,
-            child: FloatingActionButton.extended(
-              onPressed: _downloadAllJson,
-              label: const Text("Unduh data"),
-              icon: const Icon(Icons.download),
-              backgroundColor: Color(0xFF22467a),
-              foregroundColor: Colors.white,
             ),
           ),
         ],

@@ -8,12 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_popup/flutter_map_marker_popup.dart';
 import 'package:latlong2/latlong.dart';
-import '../models/pekerjaan_model.dart'; // Make sure this path points to your model
+import '../models/pekerjaan_model.dart';
 
 import '../controllers/wilayah_selection_controller.dart';
 
-/// Top-level flat extraction function running safely inside the Isolate background worker.
-/// It iterates over the container lists and flattens every array found inside 'list_pekerjaan'.
 List<PelaksanaModel> _parsePelaksanaIsolate(String filePath) {
   final file = File(filePath);
   if (!file.existsSync()) {
@@ -23,7 +21,6 @@ List<PelaksanaModel> _parsePelaksanaIsolate(String filePath) {
   final jsonString = file.readAsStringSync();
   final List<dynamic> decodedRoot = json.decode(jsonString);
 
-  // Parse using your new data model array function
   final List<PelaksanaModel> pelaksanaList = PelaksanaModel.listFromJson(decodedRoot);
 
   return pelaksanaList;
@@ -38,10 +35,8 @@ List<PekerjaanModel> _parsePekerjaanIsolate(String filePath) {
   final jsonString = file.readAsStringSync();
   final List<dynamic> decodedRoot = json.decode(jsonString);
 
-  // Parse using your new data model array function
   final List<PelaksanaModel> pelaksanaList = PelaksanaModel.listFromJson(decodedRoot);
 
-  // Safely flatten all PekerjaanModel items inside every pelaksana structure
   final List<PekerjaanModel> extractedList = [];
   for (var pelaksana in pelaksanaList) {
     extractedList.addAll(pelaksana.listPekerjaan);
@@ -116,13 +111,11 @@ class MapMarkerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Avoid heavy runtime styling computations inside the list loop
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: const BoxDecoration(
         color: Color(0xFF1A1A1A),
         shape: BoxShape.circle,
-        // Using simplified box-shadow profiles for high-volume mapping layers
         boxShadow: [
           BoxShadow(
             color: Colors.black,
@@ -154,11 +147,6 @@ class MapMarkerWidget extends StatelessWidget {
   }
 }
 
-/// Runs inside a background isolate. `params['filteredPekerjaan']` is a list
-/// of plain maps built from PekerjaanModel (see `generateMarkers` below) —
-/// NOTE: on the model, `latitude`/`longitude` are Strings and `persentase`
-/// is a `num` (int or double), so everything here is parsed defensively
-/// rather than cast directly.
 List<MarkerConfig> _generateMarkerConfigsIsolate(Map<String, dynamic> params) {
   final List<dynamic> rawFiltered = params['filteredPekerjaan'];
   final String baseDir = params['baseDir'];
@@ -166,15 +154,12 @@ List<MarkerConfig> _generateMarkerConfigsIsolate(Map<String, dynamic> params) {
   final List<MarkerConfig> configs = [];
 
   for (var raw in rawFiltered) {
-    // latitude/longitude come in as Strings — parse them, don't cast them.
     final double? lat = double.tryParse(raw['latitude']?.toString() ?? '');
     final double? lng = double.tryParse(raw['longitude']?.toString() ?? '');
-    // persentase can be int or double at runtime — num.tryParse covers both.
     final num? progress = num.tryParse(raw['persentase']?.toString() ?? '');
     final int indId = raw['indikatorId'] is int
         ? raw['indikatorId'] as int
         : int.tryParse(raw['indikatorId']?.toString() ?? '') ?? 0;
-    // The payload key is 'nama', not 'namaLokasi'.
     final String indicatorName = raw['nama']?.toString() ?? '-';
     final int? id = raw['id'] is int
         ? raw['id'] as int
@@ -253,7 +238,13 @@ class PekerjaanController extends ChangeNotifier {
 
   String? _filterNama;
   String? _filterProvinsiId;
+  String? _filterKabupatenId;
+  String? _filterKecamatanId;
   int? _filterPelaksanaId;
+  int? _filterStatusAnggaranId;
+  int? _filterPelaksanaanId;
+  int? _filterIndikatorId;
+  int? _filterKategoriPekerjaanId;
   int? _filterId;
 
   String? get filterNama => _filterNama;
@@ -264,7 +255,6 @@ class PekerjaanController extends ChangeNotifier {
   String? _filterTahunAnggaran;
   String? get filterTahunAnggaran => _filterTahunAnggaran;
 
-  // --- Single-marker highlight (detail click) ---
   int? _highlightedPekerjaanId;
   int? get highlightedPekerjaanId => _highlightedPekerjaanId;
 
@@ -275,13 +265,13 @@ class PekerjaanController extends ChangeNotifier {
   bool get isDetailPanelVisible => _isDetailPanelVisible;
 
   void showDetailPanel(PekerjaanModel data) {
-    _selectedDetailData = data; // Store the clicked model instance
+    _selectedDetailData = data;
     _isDetailPanelVisible = true;
     notifyListeners();
   }
 
   void hideDetailPanel() {
-    _selectedDetailData = null; // Clear it out when hidden
+    _selectedDetailData = null;
     _isDetailPanelVisible = false;
     notifyListeners();
   }
@@ -300,9 +290,39 @@ class PekerjaanController extends ChangeNotifier {
     _applyFilters();
   }
 
+  void filterByKabupatenId(String? kabuId) {
+    _filterKabupatenId = (kabuId == null || kabuId == '0') ? null : kabuId;
+    _applyFilters();
+  }
+
+  void filterByKecamatanId(String? kecId) {
+    _filterKecamatanId = (kecId == null || kecId == '0') ? null : kecId;
+    _applyFilters();
+  }
+
+  void filterByStatusAnggaranId(int? saId) {
+    _filterStatusAnggaranId = (saId == null || saId == 0) ? null : saId;
+    _applyFilters();
+  }
+
+  void filterByStatusPelaksanaanId(int? spId) {
+    _filterPelaksanaanId = (spId == null || spId == 0) ? null : spId;
+    _applyFilters();
+  }
+
+  void filterByIndikatorId(int? inId) {
+    _filterIndikatorId = (inId == null || inId == 0) ? null : inId;
+    _applyFilters();
+  }
+
+  void filterByKategoriPekerjaanId(int? kpId) {
+    _filterKategoriPekerjaanId = (kpId == null || kpId == 0) ? null : kpId;
+    _applyFilters();
+  }
+
   void filterByPelaksanaId(int? pelaksanaId) {
     _filterPelaksanaId = pelaksanaId;
-    clearHighlight(); // switching pelaksana invalidates any single-marker highlight
+    clearHighlight();
     _applyFilters();
   }
 
@@ -329,8 +349,14 @@ class PekerjaanController extends ChangeNotifier {
   void clearFilters() {
     _filterNama = null;
     _filterProvinsiId = null;
+    _filterKabupatenId = null;
+    _filterKecamatanId = null;
     _filterPelaksanaId = null;
     _filterTahunAnggaran = null;
+    _filterStatusAnggaranId = null;
+    _filterPelaksanaanId = null;
+    _filterIndikatorId = null;
+    _filterKategoriPekerjaanId = null;
     clearHighlight();
     _applyFilters();
   }
@@ -343,6 +369,30 @@ class PekerjaanController extends ChangeNotifier {
           .firstWhereOrNull((w) => w.kode == _filterProvinsiId);
       final resolvedId = matchedProvince?.id;
       result = result.where((p) => p.provinsiId == resolvedId);
+    }
+    if (_filterKabupatenId != null) {
+      final matchedKabu = _wilayah?.wilayah.data
+          .firstWhereOrNull((w) => w.kode == _filterKabupatenId);
+      final resolvedId = matchedKabu?.id;
+      result = result.where((p) => p.kabupatenId == resolvedId);
+    }
+    if (_filterKecamatanId != null) {
+      final matchedKec = _wilayah?.wilayah.data
+          .firstWhereOrNull((w) => w.kode == _filterKecamatanId);
+      final resolvedId = matchedKec?.id;
+      result = result.where((p) => p.wilayahId == resolvedId);
+    }
+    if (_filterStatusAnggaranId != null) {
+      result = result.where((p) => p.statusAnggaranId == _filterStatusAnggaranId);
+    }
+    if (_filterPelaksanaanId != null) {
+      result = result.where((p) => p.statusPelaksanaanId == _filterPelaksanaanId);
+    }
+    if (_filterIndikatorId != null) {
+      result = result.where((p) => p.indikatorId == _filterIndikatorId);
+    }
+    if (_filterKategoriPekerjaanId != null) {
+      result = result.where((p) => p.kategoriPaketPekerjaanId == _filterKategoriPekerjaanId);
     }
     if (_filterPelaksanaId != null) {
       result = result.where((p) => p.pelaksanaId == _filterPelaksanaId);
@@ -359,9 +409,6 @@ class PekerjaanController extends ChangeNotifier {
     await generateMarkers();
   }
 
-  /// Show only one marker (matching id) on the map, hiding the rest of the
-  /// currently-filtered set. Does NOT touch _markers/filteredPekerjaanData —
-  /// purely a display-level narrowing, so it's instant (no isolate work).
   void highlightPekerjaan(int? id) {
     if (_highlightedPekerjaanId == id) return;
     _highlightedPekerjaanId = id;
@@ -376,9 +423,6 @@ class PekerjaanController extends ChangeNotifier {
 
   List<Marker> _markers = [];
 
-  // Controls whether `markers` exposes the computed marker list or an
-  // empty one — lets HomeView hide the pekerjaan layer whenever its panel
-  // isn't the one currently open, without throwing away the computed data.
   bool _markersVisible = false;
   bool get markersVisible => _markersVisible;
   List<Marker> get markers => _markersVisible ? _markers : const [];
@@ -389,11 +433,9 @@ class PekerjaanController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Loading states
   bool _isLoaded = false;
   String? _error;
 
-  // Getters
   List<PekerjaanModel> get data => allPekerjaanData;
   bool get isLoaded => _isLoaded;
   String? get error => _error;
@@ -401,7 +443,6 @@ class PekerjaanController extends ChangeNotifier {
 
   PekerjaanController();
 
-  /// Loads full flattened data once or handles manual reloading flags
   Future<void> loadPekerjaanData({bool forceReload = false}) async {
     if (_isLoaded && !forceReload) {
       debugPrint('Pekerjaan data already loaded, skipping...');
@@ -417,7 +458,6 @@ class PekerjaanController extends ChangeNotifier {
       throw Exception("Could not find USERPROFILE environment variable.");
     }
 
-    // Windows custom path resolution matching SatgasPRR local architecture
     final String targetPath =
         '$userProfile\\AppData\\Roaming\\SatgasPRR\\monitor_bencana_d\\json_data\\get_pekerjaan.json';
 
@@ -427,7 +467,6 @@ class PekerjaanController extends ChangeNotifier {
 
       debugPrint('Loading pekerjaan data from: $targetPath');
 
-      // Execute the compute/isolate loop on background pool
       List<PelaksanaModel> result1 =
           await Isolate.run(() => _parsePelaksanaIsolate(targetPath));
 
@@ -476,14 +515,12 @@ class PekerjaanController extends ChangeNotifier {
     String provinsi = '';
 
     if (currentWilayah != null) {
-      // 2. Find the kabupaten using parentKode of the kecamatan
       final parentWilayah = _wilayah?.wilayah.data.firstWhereOrNull(
         (w) => w.kode == currentWilayah.parentKode,
       );
       kabupaten = parentWilayah?.nama ?? '';
 
       if (parentWilayah != null) {
-        // 3. Find the provinsi using parentKode of the kabupaten
         final grandParentWilayah = _wilayah?.wilayah.data.firstWhereOrNull(
           (w) => w.kode == parentWilayah.parentKode,
         );
@@ -568,7 +605,6 @@ class PekerjaanController extends ChangeNotifier {
     }
     markerImage += '.png';
 
-    // Helper builder for metadata items
     Widget buildMetaRow(String label, String value, {Color? valueColor}) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8.0),
@@ -602,7 +638,7 @@ class PekerjaanController extends ChangeNotifier {
     Widget buildActionButton(String label, IconData icon, VoidCallback onTap, {bool isActive = false}) {
       return Expanded(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3.0), // Balanced side padding
+          padding: const EdgeInsets.symmetric(horizontal: 3.0),
           child: OutlinedButton.icon(
             onPressed: onTap,
             icon: Icon(
@@ -620,9 +656,7 @@ class PekerjaanController extends ChangeNotifier {
             ),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              // Dynamically set background color matching the image reference
               backgroundColor: isActive ? const Color(0xFF0F172A) : const Color(0xFF334155),
-              // Clean up borders depending on state
               side: BorderSide(
                 color: isActive ? Colors.white10 : Colors.transparent, 
                 width: 1,
@@ -639,7 +673,7 @@ class PekerjaanController extends ChangeNotifier {
     return Container(
       width: 340,
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B), // Navy-slate background color frame matching screenshot
+        color: const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.white10),
         boxShadow: [
@@ -650,7 +684,6 @@ class PekerjaanController extends ChangeNotifier {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Header Panel Row Zone
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 8, 10),
             child: Row(
@@ -684,7 +717,6 @@ class PekerjaanController extends ChangeNotifier {
           ),
           const Divider(color: Colors.white12, height: 1),
 
-          // 2. Metadata Content Details Zone
           Padding(
             padding: const EdgeInsets.all(14.0),
             child: Column(
@@ -693,13 +725,12 @@ class PekerjaanController extends ChangeNotifier {
                 buildMetaRow("Provinsi", provinsi),
                 buildMetaRow("Kabupaten", kabupaten),
                 buildMetaRow("Kecamatan", kecamatan),
-                buildMetaRow("Nominal Pekerjaan", nominal, valueColor: const Color(0xFF60A5FA)), // Accent light blue nominal text
+                buildMetaRow("Nominal Pekerjaan", nominal, valueColor: const Color(0xFF60A5FA)),
               ],
             ),
           ),
           const Divider(color: Colors.white12, height: 1),
 
-          // 3. Three Bottom Action Buttons Row
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
@@ -710,10 +741,8 @@ class PekerjaanController extends ChangeNotifier {
                   showDetailPanel(data);
                 }),
                 buildActionButton("Dokumentasi", Icons.camera_alt_outlined, () {
-                  // TODO: Wire up your image stack dialog viewer action
                 }),
                 buildActionButton("Progres", Icons.trending_up, () {
-                  // TODO: Wire up your chart timeline view list logic action
                 }),
               ],
             ),
@@ -747,7 +776,6 @@ class PekerjaanController extends ChangeNotifier {
         .replaceAll('/', Platform.pathSeparator)
         .replaceAll('\\', Platform.pathSeparator);
 
-    // Prepare primitive list maps to pass down safely across Isolate borders
     final List<Map<String, dynamic>> securePayloadList = filteredPekerjaanData
         .map((p) => {
               'id': p.id,
@@ -760,7 +788,6 @@ class PekerjaanController extends ChangeNotifier {
         .toList();
 
     try {
-      // Offload string matching and calculations down to your Isolate thread
       final List<MarkerConfig> computedConfigs = await Isolate.run(
         () => _generateMarkerConfigsIsolate({
           'filteredPekerjaan': securePayloadList,
@@ -768,7 +795,6 @@ class PekerjaanController extends ChangeNotifier {
         }),
       );
 
-      // Map configuration rules directly into real elements on Main UI Thread safely
       _markers = computedConfigs.map((config) {
         return Marker(
           key: ValueKey(config.id),
@@ -788,7 +814,6 @@ class PekerjaanController extends ChangeNotifier {
     }
   }
 
-  /// Reset or Clear variables (e.g. on logout or filter wipe)
   void clearData() {
     allPelaksanaData = [];
     allPekerjaanData = [];

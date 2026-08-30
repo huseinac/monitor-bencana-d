@@ -4,7 +4,15 @@ import 'panel_dropdown.dart';
 
 import '../controllers/wilayah_selection_controller.dart';
 import '../controllers/pekerjaan_controller.dart';
+import '../controllers/status_anggaran_controller.dart';
+import '../controllers/status_pelaksanaan_controller.dart';
+import '../controllers/indikator_controller.dart';
+import '../controllers/kategori_paket_pekerjaan_controller.dart';
+import '../models/indikator_model.dart';
 import '../models/pekerjaan_model.dart';
+import '../models/status_anggaran_model.dart';
+import '../models/status_pelaksanaan_model.dart';
+import '../models/kategori_paket_pekerjaan_model.dart';
 
 // 1. The Widget configuration class (Immutable)
 class RendukPanel extends StatefulWidget {
@@ -23,12 +31,20 @@ class _RendukPanelState extends State<RendukPanel> {
   late final PekerjaanController dataSource =
       context.read<PekerjaanController>();
 
+  late final StatusAnggaranController statusAnggaran = context.read<StatusAnggaranController>();
+
+  late final StatusPelaksanaanController statusPelaksanaan = context.read<StatusPelaksanaanController>();
+
+  late final IndikatorController indikator = context.read<IndikatorController>();
+
+  late final KategoriPaketPekerjaanController kategoriPaketPekerjaan = context.watch<KategoriPaketPekerjaanController>();
+
   final ScrollController _panelScrollController = ScrollController();
 
   String? _selectedAreaCode = '0';
 
   final Map<String, String> _optionProvinces = const {
-    '0': 'All',
+    //'0': 'All',
     '11': 'Aceh',
     '12': 'Sumatera Utara',
     '13': 'Sumatera Barat',
@@ -45,8 +61,6 @@ class _RendukPanelState extends State<RendukPanel> {
   String? _cariNamaPekerjaan;
   String? _cariPelaksanaId;
 
-  // Index into dataSource.allPelaksanaData — defaults to the first item (0)
-  // so the detail pane has something to show as soon as data loads.
   int _selectedPekerjaanIndex = 0;
 
   Widget _header() {
@@ -75,28 +89,44 @@ class _RendukPanelState extends State<RendukPanel> {
           ),
           const Text("Ringkasan jenis paket pekerjaan di Sumatera dan Aceh",
               style: TextStyle(color: Colors.black, fontSize: 11)),
-          const SizedBox(height: 15),
-          Row(
-            children: [
-              Expanded(
-                child: PanelDropdown(
-                  hint: "Prop :",
-                  value: _wilayah.selectedProv,
-                  items: _optionProvinces,
-                  onChanged: (String? selectedId) {
-                    _wilayah.setSelectedProv(selectedId ?? '0');
-                    setState(() {
-                      _selectedOptionProv = selectedId;
-                      _selectedAreaCode = selectedId;
-                    });
-                    dataSource.filterByProvinsiId(_wilayah.selectedProv);
-                  },
-                ),
-              ),
-            ],
-          ),
+          //const SizedBox(height: 15),
+          //Row(
+          //  children: [
+          //    Expanded(
+          //      child: PanelDropdown(
+          //        hint: "Prop :",
+          //        value: _wilayah.selectedProv,
+          //        items: _optionProvinces,
+          //        onChanged: (String? selectedId) {
+          //          _wilayah.setSelectedProv(selectedId ?? '0');
+          //          setState(() {
+          //            _selectedOptionProv = selectedId;
+          //            _selectedAreaCode = selectedId;
+          //          });
+          //          dataSource.filterByProvinsiId(_wilayah.selectedProv);
+          //        },
+          //      ),
+          //    ),
+          //  ],
+          //),
           const SizedBox(height: 10),
           rendukPencarianData(),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () {
+              dataSource.clearFilters();
+            },
+            icon: const Icon(Icons.filter_alt_off, size: 16),
+            label: const Text("Reset Filter"),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.black,
+              side: const BorderSide(color: Colors.grey),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+          ),
           const SizedBox(height: 10),
           Text("Total pekerjaan : ${dataSource.filteredPekerjaanData.length}",
               style: const TextStyle(color: Colors.black, fontSize: 15)),
@@ -115,7 +145,6 @@ class _RendukPanelState extends State<RendukPanel> {
       itemBuilder: (context, index) {
         final pelaksana = dataSource.filteredPelaksanaData[index];
 
-        // Parse values cleanly with fallbacks for null safety
         final String namaPelaksana = pelaksana.nama ?? "Tanpa Nama";
         final num progressPersen = pelaksana.persentase ?? 0;
         final int jumlahPekerjaan = pelaksana.listPekerjaan.length;
@@ -315,88 +344,301 @@ class _RendukPanelState extends State<RendukPanel> {
           children: [
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Cari tahun',
-                      style: TextStyle(color: Colors.black, fontSize: 15)),
-                  const SizedBox(height: 4),
-                  DropdownMenu<String>(
-                    expandedInsets: EdgeInsets.zero,
-                    initialSelection: _cariTahunAnggaran,
-                    textStyle: const TextStyle(color: Colors.black, fontSize: 14),
-                    hintText: '-Pilih tahun-',
-                    inputDecorationTheme: const InputDecorationTheme(
-                      border: OutlineInputBorder(),
-                      hintStyle: TextStyle(color: Colors.black, fontSize: 12),
-                    ),
-                    dropdownMenuEntries:
-                        _pilihanCariTahunPelaksanaan.map((String value) {
-                      return DropdownMenuEntry<String>(
-                        value: value,
-                        label: value,
-                        style:
-                            MenuItemButton.styleFrom(foregroundColor: Colors.black),
-                      );
-                    }).toList(),
-                    onSelected: (newValue) {
-                      setState(() {
-                        _cariTahunAnggaran = newValue;
-                      });
-                      dataSource.filterByTahunAnggaran(newValue);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Nama Pekerjaan',
-                      style: TextStyle(color: Colors.black, fontSize: 15)),
-                  const SizedBox(height: 4),
-                  TextField(
-                    style: const TextStyle(color: Colors.black, fontSize: 14),
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Cari nama pekerjaan',
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                    ),
-                    onChanged: (textValue) {
-                      setState(() {
-                        _cariNamaPekerjaan = textValue;
-                      });
-                      dataSource.filterByNama(textValue);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Pelaksana',
-                      style: TextStyle(color: Colors.black, fontSize: 15)),
-                  const SizedBox(height: 4),
-                  DropdownMenu<String>(
-                    expandedInsets: EdgeInsets.zero,
-                    initialSelection: _cariPelaksanaId, // was _cariTahunAnggaran — wrong variable
-                    textStyle: const TextStyle(color: Colors.black, fontSize: 14),
-                    hintText: '-Pilih pelaksana-',
-                    inputDecorationTheme: const InputDecorationTheme(
-                      border: OutlineInputBorder(),
-                      hintStyle: TextStyle(color: Colors.black, fontSize: 12),
-                    ),
-                    dropdownMenuEntries: dataSource.allPelaksanaData.map((PelaksanaModel pelaksana) {
-                      return DropdownMenuEntry<String>(
-                        value: pelaksana.id.toString(),       // DropdownMenu<String> needs a String value
-                        label: pelaksana.nama ?? 'Tanpa Nama',
-                        style: MenuItemButton.styleFrom(foregroundColor: Colors.black),
-                      );
-                    }).toList(),
-                    onSelected: (newValue) {
-                      setState(() {
-                        _cariPelaksanaId = newValue;
-                      });
-                      dataSource.filterByPelaksanaId(
-                        newValue == null ? null : int.tryParse(newValue),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.60),
+                child: Scrollbar(
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Nama / Keterangan',
+                            style: TextStyle(color: Colors.black, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        TextField(
+                          style: const TextStyle(color: Colors.black, fontSize: 14),
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            labelText: 'Cari nama pekerjaan',
+                            contentPadding:
+                                EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                          onChanged: (textValue) {
+                            setState(() {
+                              _cariNamaPekerjaan = textValue;
+                            });
+                            dataSource.filterByNama(textValue);
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Provinsi',
+                            style: TextStyle(color: Colors.black, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        DropdownMenu<String>(
+                          menuHeight: MediaQuery.of(context).size.height * 0.40,
+                          expandedInsets: EdgeInsets.zero,
+                          //initialSelection: _cariTahunAnggaran,
+                          textStyle: const TextStyle(color: Colors.black, fontSize: 14),
+                          hintText: '-Pilih Provinsi-',
+                          inputDecorationTheme: const InputDecorationTheme(
+                            border: OutlineInputBorder(),
+                            hintStyle: TextStyle(color: Colors.black, fontSize: 12),
+                          ),
+                          dropdownMenuEntries:
+                            _optionProvinces.entries.map((opt) {
+                            return DropdownMenuEntry<String>(
+                              value: opt.key,
+                              label: opt.value,
+                              style:
+                                  MenuItemButton.styleFrom(foregroundColor: Colors.black),
+                            );
+                          }).toList(),
+                          onSelected: (newValue) {
+                            _wilayah.setSelectedProv(newValue ?? '0');
+
+                            setState(() {
+                            });
+                            dataSource.filterByProvinsiId(_wilayah.selectedProv);
+                            _wilayah.populateOptionKabupaten();
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Kabupaten / Kota',
+                            style: TextStyle(color: Colors.black, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        DropdownMenu<String>(
+                          menuHeight: MediaQuery.of(context).size.height * 0.40,
+                          expandedInsets: EdgeInsets.zero,
+                          //initialSelection: _cariTahunAnggaran,
+                          textStyle: const TextStyle(color: Colors.black, fontSize: 14),
+                          hintText: '-Pilih kabupaten / kota-',
+                          inputDecorationTheme: const InputDecorationTheme(
+                            border: OutlineInputBorder(),
+                            hintStyle: TextStyle(color: Colors.black, fontSize: 12),
+                          ),
+                          dropdownMenuEntries:
+                            _wilayah.optionKabupaten.entries.map((opt) {
+                            return DropdownMenuEntry<String>(
+                              value: opt.key,
+                              label: opt.value,
+                              style:
+                                  MenuItemButton.styleFrom(foregroundColor: Colors.black),
+                            );
+                          }).toList(),
+                          onSelected: (newValue) {
+                            _wilayah.setSelectedKabupaten(newValue ?? '0');
+
+                            setState(() {
+                            });
+                            dataSource.filterByKabupatenId(newValue);
+                            _wilayah.populateOptionKecamatan();
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Kecamatan',
+                            style: TextStyle(color: Colors.black, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        DropdownMenu<String>(
+                          menuHeight: MediaQuery.of(context).size.height * 0.40,
+                          expandedInsets: EdgeInsets.zero,
+                          //initialSelection: _cariTahunAnggaran,
+                          textStyle: const TextStyle(color: Colors.black, fontSize: 14),
+                          hintText: '-Pilih kecamatan-',
+                          inputDecorationTheme: const InputDecorationTheme(
+                            border: OutlineInputBorder(),
+                            hintStyle: TextStyle(color: Colors.black, fontSize: 12),
+                          ),
+                          dropdownMenuEntries:
+                            _wilayah.optionKecamatan.entries.map((opt) {
+                            return DropdownMenuEntry<String>(
+                              value: opt.key,
+                              label: opt.value,
+                              style:
+                                  MenuItemButton.styleFrom(foregroundColor: Colors.black),
+                            );
+                          }).toList(),
+                          onSelected: (newValue) {
+                            _wilayah.setSelectedKecamatan(newValue ?? '0');
+
+                            setState(() {
+                            });
+                            dataSource.filterByKecamatanId(newValue);
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Pelaksana',
+                            style: TextStyle(color: Colors.black, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        DropdownMenu<String>(
+                          menuHeight: MediaQuery.of(context).size.height * 0.40,
+                          expandedInsets: EdgeInsets.zero,
+                          initialSelection: _cariPelaksanaId,
+                          textStyle: const TextStyle(color: Colors.black, fontSize: 14),
+                          hintText: '-Pilih pelaksana-',
+                          inputDecorationTheme: const InputDecorationTheme(
+                            border: OutlineInputBorder(),
+                            hintStyle: TextStyle(color: Colors.black, fontSize: 12),
+                          ),
+                          dropdownMenuEntries: dataSource.allPelaksanaData.map((PelaksanaModel pelaksana) {
+                            return DropdownMenuEntry<String>(
+                              value: pelaksana.id.toString(),
+                              label: pelaksana.nama ?? 'Tanpa Nama',
+                              style: MenuItemButton.styleFrom(foregroundColor: Colors.black),
+                            );
+                          }).toList(),
+                          onSelected: (newValue) {
+                            setState(() {
+                              _cariPelaksanaId = newValue;
+                            });
+                            dataSource.filterByPelaksanaId(
+                              newValue == null ? null : int.tryParse(newValue),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Status Anggaran',
+                            style: TextStyle(color: Colors.black, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        DropdownMenu<String>(
+                          menuHeight: MediaQuery.of(context).size.height * 0.40,
+                          expandedInsets: EdgeInsets.zero,
+                          //initialSelection: _cariPelaksanaId,
+                          textStyle: const TextStyle(color: Colors.black, fontSize: 14),
+                          hintText: '-Pilih status anggaran-',
+                          inputDecorationTheme: const InputDecorationTheme(
+                            border: OutlineInputBorder(),
+                            hintStyle: TextStyle(color: Colors.black, fontSize: 12),
+                          ),
+                          dropdownMenuEntries: statusAnggaran.data.map((StatusAnggaranModel status) {
+                            return DropdownMenuEntry<String>(
+                              value: status.id.toString(),
+                              label: status.nama,
+                              style: MenuItemButton.styleFrom(foregroundColor: Colors.black),
+                            );
+                          }).toList(),
+                          onSelected: (newValue) {
+                            dataSource.filterByStatusAnggaranId(
+                              newValue == null ? null : int.tryParse(newValue),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Status Pelaksanaan',
+                            style: TextStyle(color: Colors.black, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        DropdownMenu<String>(
+                          menuHeight: MediaQuery.of(context).size.height * 0.40,
+                          expandedInsets: EdgeInsets.zero,
+                          //initialSelection: _cariPelaksanaId,
+                          textStyle: const TextStyle(color: Colors.black, fontSize: 14),
+                          hintText: '-Pilih status pelaksanaan-',
+                          inputDecorationTheme: const InputDecorationTheme(
+                            border: OutlineInputBorder(),
+                            hintStyle: TextStyle(color: Colors.black, fontSize: 12),
+                          ),
+                          dropdownMenuEntries: statusPelaksanaan.data.map((StatusPelaksanaanModel status) {
+                            return DropdownMenuEntry<String>(
+                              value: status.id.toString(),
+                              label: status.nama,
+                              style: MenuItemButton.styleFrom(foregroundColor: Colors.black),
+                            );
+                          }).toList(),
+                          onSelected: (newValue) {
+                            dataSource.filterByStatusPelaksanaanId(
+                              newValue == null ? null : int.tryParse(newValue),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Indikator',
+                            style: TextStyle(color: Colors.black, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        DropdownMenu<String>(
+                          menuHeight: MediaQuery.of(context).size.height * 0.40,
+                          expandedInsets: EdgeInsets.zero,
+                          //initialSelection: _cariPelaksanaId,
+                          textStyle: const TextStyle(color: Colors.black, fontSize: 14),
+                          hintText: '-Pilih status pelaksanaan-',
+                          inputDecorationTheme: const InputDecorationTheme(
+                            border: OutlineInputBorder(),
+                            hintStyle: TextStyle(color: Colors.black, fontSize: 12),
+                          ),
+                          dropdownMenuEntries: indikator.data.map((IndikatorModel status) {
+                            return DropdownMenuEntry<String>(
+                              value: status.id.toString(),
+                              label: status.nama,
+                              style: MenuItemButton.styleFrom(foregroundColor: Colors.black),
+                            );
+                          }).toList(),
+                          onSelected: (newValue) {
+                            dataSource.filterByIndikatorId(
+                              newValue == null ? null : int.tryParse(newValue),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Kategori',
+                            style: TextStyle(color: Colors.black, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        DropdownMenu<String>(
+                          menuHeight: MediaQuery.of(context).size.height * 0.40,
+                          expandedInsets: EdgeInsets.zero,
+                          //initialSelection: _cariPelaksanaId,
+                          textStyle: const TextStyle(color: Colors.black, fontSize: 14),
+                          hintText: '-Pilih status pelaksanaan-',
+                          inputDecorationTheme: const InputDecorationTheme(
+                            border: OutlineInputBorder(),
+                            hintStyle: TextStyle(color: Colors.black, fontSize: 12),
+                          ),
+                          dropdownMenuEntries: kategoriPaketPekerjaan.data.map((KategoriPaketPekerjaanModel status) {
+                            return DropdownMenuEntry<String>(
+                              value: status.id.toString(),
+                              label: status.nama,
+                              style: MenuItemButton.styleFrom(foregroundColor: Colors.black),
+                            );
+                          }).toList(),
+                          onSelected: (newValue) {
+                            dataSource.filterByKategoriPekerjaanId(
+                              newValue == null ? null : int.tryParse(newValue),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Cari tahun',
+                            style: TextStyle(color: Colors.black, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        DropdownMenu<String>(
+                          menuHeight: MediaQuery.of(context).size.height * 0.40,
+                          expandedInsets: EdgeInsets.zero,
+                          initialSelection: _cariTahunAnggaran,
+                          textStyle: const TextStyle(color: Colors.black, fontSize: 14),
+                          hintText: '-Pilih tahun-',
+                          inputDecorationTheme: const InputDecorationTheme(
+                            border: OutlineInputBorder(),
+                            hintStyle: TextStyle(color: Colors.black, fontSize: 12),
+                          ),
+                          dropdownMenuEntries:
+                              _pilihanCariTahunPelaksanaan.map((String value) {
+                            return DropdownMenuEntry<String>(
+                              value: value,
+                              label: value,
+                              style:
+                                  MenuItemButton.styleFrom(foregroundColor: Colors.black),
+                            );
+                          }).toList(),
+                          onSelected: (newValue) {
+                            setState(() {
+                              _cariTahunAnggaran = newValue;
+                            });
+                            dataSource.filterByTahunAnggaran(newValue);
+                          },
+                        ),
+                      ],
+                    )
+                  )
+                )
+              )
             ),
           ],
         ),
