@@ -25,11 +25,9 @@ class RendukPanel extends StatefulWidget {
 }
 
 class _RendukPanelState extends State<RendukPanel> {
-  late final WilayahSelectionController _wilayah =
-      context.read<WilayahSelectionController>();
+  late final WilayahSelectionController _wilayah =context.read<WilayahSelectionController>();
 
-  late final PekerjaanController dataSource =
-      context.read<PekerjaanController>();
+  late final PekerjaanController dataSource =context.read<PekerjaanController>();
 
   late final StatusAnggaranController statusAnggaran = context.read<StatusAnggaranController>();
 

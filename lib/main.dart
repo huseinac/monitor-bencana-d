@@ -8,6 +8,7 @@ import 'controllers/pekerjaan_controller.dart';
 import 'controllers/status_anggaran_controller.dart';
 import 'controllers/status_pelaksanaan_controller.dart';
 import 'controllers/kategori_paket_pekerjaan_controller.dart';
+import 'controllers/drone_area_controller.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,6 +47,9 @@ void main() {
         ),
         ChangeNotifierProvider(
           create: (_) => KategoriPaketPekerjaanController(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => DroneAreaController(),
         ),
       ],
       child: const MyApp(), // wraps HomeView further down

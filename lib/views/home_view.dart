@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
@@ -14,6 +15,7 @@ import '../widgets/wilayah_panel.dart';
 import '../widgets/indikator_panel.dart';
 import '../widgets/renduk_panel.dart';
 import '../widgets/tkd_panel.dart';
+import '../widgets/drone_panel.dart';
 import '../widgets/combo_box_area.dart';
 import '../widgets/pekerjaan_renduk_detail_panel.dart';
 
@@ -23,6 +25,9 @@ import '../controllers/pekerjaan_controller.dart';
 import '../controllers/status_anggaran_controller.dart';
 import '../controllers/status_pelaksanaan_controller.dart';
 import '../controllers/kategori_paket_pekerjaan_controller.dart';
+import '../controllers/drone_area_controller.dart';
+
+import '../models/drone_area_detail_model.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -38,10 +43,11 @@ class HomeViewState extends State<HomeView> {
   late final PaketPekerjaanController paketPekerjaan =
       context.read<PaketPekerjaanController>();
 
-  // Reference to the real PekerjaanController (DalRenduk data), used to
-  // toggle its map marker layer on/off with the RendukPanel.
   late final PekerjaanController pekerjaanController =
       context.read<PekerjaanController>();
+
+  late final DroneAreaController droneArea =
+      context.read<DroneAreaController>();
 
   int _mapStyle = 1;
   bool _isLoading = false;
@@ -53,6 +59,7 @@ class HomeViewState extends State<HomeView> {
   @override
   void initState() {
     super.initState();
+    showLoading(true);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await context.read<WilayahSelectionController>().ensureDataLoaded();
       await context.read<IndikatorController>().loadIndikatorData();
@@ -60,8 +67,10 @@ class HomeViewState extends State<HomeView> {
       await context.read<StatusAnggaranController>().loadStatusAnggaranData();
       await context.read<StatusPelaksanaanController>().loadStatusPelaksanaanData();
       await context.read<KategoriPaketPekerjaanController>().loadKategoriPaketPekerjaanData();
+      await context.read<DroneAreaController>().loadDroneAreaData();
       _periksaDataOfflinePadaStartup();
     });
+    showLoading(false);
   }
 
   void showLoading(bool state) {
@@ -112,10 +121,6 @@ class HomeViewState extends State<HomeView> {
     }
   }
 
-  /// Central place to change which right-hand panel is open. Anything that
-  /// used to do `setState(() => _isShowPanel = ...)` directly should call
-  /// this instead, so the pekerjaan marker layer always stays in sync with
-  /// whether the RendukPanel ('pekerjaan') is actually visible.
   void _setShowPanel(String value) {
     setState(() {
       _isShowPanel = value;
@@ -124,7 +129,6 @@ class HomeViewState extends State<HomeView> {
   }
 
   void _rightPanelToggle() {
-    // If the panel is already showing, hide it. Otherwise, reveal it.
     if (_isShowPanel.isNotEmpty) {
       _setShowPanel('');
     } else {
@@ -135,52 +139,103 @@ class HomeViewState extends State<HomeView> {
   Future<void> _downloadAllJson() async {
     setState(() => _isLoading = true);
     
-    final List<String> endpoints = [
-      'https://geopas.satgasprr.go.id/map/get_anggaran',
-      'https://geopas.satgasprr.go.id/map/get_indikator',
-      'https://geopas.satgasprr.go.id/map/get_pekerjaan',
-      'https://geopas.satgasprr.go.id/map/get_wilayah_all',
-      'https://geopas.satgasprr.go.id/map/get_status_pelaksanaan',
-      'https://geopas.satgasprr.go.id/map/get_pelaksana',
-      'https://geopas.satgasprr.go.id/map/get_status_anggaran',
-    ];
+    //final List<String> endpoints = [
+    //  'https://geopas.satgasprr.go.id/map/get_anggaran',
+    //  'https://geopas.satgasprr.go.id/map/get_indikator',
+    //  'https://geopas.satgasprr.go.id/map/get_pekerjaan',
+    //  'https://geopas.satgasprr.go.id/map/get_wilayah_all',
+    //  'https://geopas.satgasprr.go.id/map/get_status_pelaksanaan',
+    //  'https://geopas.satgasprr.go.id/map/get_pelaksana',
+    //  'https://geopas.satgasprr.go.id/map/get_status_anggaran',
+    //  'https://geopas.satgasprr.go.id/home/kabkota',
+    //];
 
     try {
       final Directory appDataDir = await getApplicationSupportDirectory();
       
-      for (String url in endpoints) {
-        final response = await http.get(Uri.parse(url));
-        if (response.statusCode == 200) {
-          debugPrint(response.body);
-          final String fileName = _getCleanFileName(url);
-          final File file = File('${appDataDir.path}/json_data/$fileName.json');
+      //for (String url in endpoints) {
+      //  final response = await http.get(Uri.parse(url));
+      //  if (response.statusCode == 200) {
+      //    final String fileName = _getCleanFileName(url);
+      //    final File file = File('${appDataDir.path}/json_data/$fileName.json');
           
-          await file.parent.create(recursive: true);
-          await file.writeAsString(response.body);
-        }
-      }
+      //    await file.parent.create(recursive: true);
+      //    await file.writeAsString(response.body);
+      //  }
+      //}
 
-      final String zipUrl = 'https://geopas.satgasprr.go.id/download_asset';
-      final zipResponse = await http.get(Uri.parse(zipUrl));
+      //final String zipUrl = 'https://geopas.satgasprr.go.id/download_asset';
+      //final zipResponse = await http.get(Uri.parse(zipUrl));
 
-      if (zipResponse.statusCode == 200) {
-        final Archive archive = ZipDecoder().decodeBytes(zipResponse.bodyBytes);
+      //if (zipResponse.statusCode == 200) {
+      //  final Archive archive = ZipDecoder().decodeBytes(zipResponse.bodyBytes);
 
-        for (final ArchiveFile file in archive) {
-          final String filename = file.name;
+      //  for (final ArchiveFile file in archive) {
+      //    final String filename = file.name;
           
-          final String localPath = '${appDataDir.path}/$filename';
-          final File outFile = File(localPath);
+      //    final String localPath = '${appDataDir.path}/$filename';
+      //    final File outFile = File(localPath);
 
-          if (file.isFile) {
-            await outFile.parent.create(recursive: true);
-            await outFile.writeAsBytes(file.content as List<int>);
-          } else {
-            await Directory(localPath).create(recursive: true);
+      //    if (file.isFile) {
+      //      await outFile.parent.create(recursive: true);
+      //      await outFile.writeAsBytes(file.content as List<int>);
+      //    } else {
+      //      await Directory(localPath).create(recursive: true);
+      //    }
+      //  }
+      //} else {
+      //  throw Exception('Server returned code ${zipResponse.statusCode} for assets package zip.');
+      //}
+
+      //int x = droneArea.count;
+
+      //if (x < 1) {
+      //  await droneArea.loadDroneAreaData();
+      //}
+
+      for (final da in droneArea.data) {
+        final String droneVidUri = "https://geopas.satgasprr.go.id/home/kabkota/${da.kabkotaId}/drone";
+
+        try {
+          final dronedataresponse = await http.get(Uri.parse(droneVidUri));
+          if (dronedataresponse.statusCode != 200) continue;
+
+          final decoded = jsonDecode(dronedataresponse.body);
+          if (decoded is! List || decoded.isEmpty) continue;
+
+          final Map<String, dynamic> firstItem = decoded.first as Map<String, dynamic>;
+          if (firstItem['views'] is! List) continue;
+
+          final List<dynamic> views = firstItem['views'] as List<dynamic>;
+
+          for (final xx in views) {
+            if (xx is Map<String, dynamic> &&
+                xx['videos'] is List &&
+                (xx['videos'] as List).isNotEmpty) {
+              
+              final String? videoUrlStr = xx['videos'][0]['url']?.toString();
+              if (videoUrlStr == null || videoUrlStr.isEmpty) continue;
+
+              final Uri videoUri = Uri.parse(videoUrlStr);
+              final String vidFileName = videoUri.pathSegments.last;
+              final File vidFile = File('${appDataDir.path}/droneVideo/$vidFileName');
+
+              await vidFile.parent.create(recursive: true);
+
+              final response = await http.get(videoUri);
+              if (response.statusCode == 200) {
+                await vidFile.writeAsBytes(response.bodyBytes);
+                debugPrint("============== Video Downloaded ==============");
+                debugPrint(vidFileName);
+                debugPrint("==============================================");
+              } else {
+                debugPrint('Failed video HTTP status ${response.statusCode} for $videoUrlStr');
+              }
+            }
           }
+        } catch (e) {
+          debugPrint("Error processing drone videos for KabKota ${da.kabkotaId}: $e");
         }
-      } else {
-        throw Exception('Server returned code ${zipResponse.statusCode} for assets package zip.');
       }
       
       if (mounted) {
@@ -221,8 +276,6 @@ class HomeViewState extends State<HomeView> {
       _mapStyle = context == 'pekerjaan' ? 2 : 1;
       _sidebarActiveButton = context;
     });
-    // Switching the main nav always closes whichever panel was open, and
-    // this keeps the pekerjaan marker layer in sync too.
     _setShowPanel('');
 
     switch (context) {
@@ -236,6 +289,9 @@ class HomeViewState extends State<HomeView> {
         await pekerjaanController.loadPekerjaanData(forceReload: true);
         pekerjaanController.setMarkersVisible(true);
         paketPekerjaan.setMarkersVisible(false);
+      break;
+      case "drone":
+        _setShowPanel(_showMonitorButton);
       break;
       default:
         paketPekerjaan.setMarkersVisible(false);
@@ -323,13 +379,21 @@ class HomeViewState extends State<HomeView> {
                     textColor: _sidebarActiveButton == 'tkd' ? Colors.white : Colors.black,
                     onTap: () => _navMenuEvent('tkd'),
                   ),
+                  const SizedBox(height: 16),
+                  _buildSidebarButton(
+                    imagePath: 'assets/icons/videodrone.png',
+                    label: "Video Drone",
+                    bgColor: _sidebarActiveButton == 'drone' ? Color(0xFF22467a) : Colors.white,
+                    textColor: _sidebarActiveButton == 'drone' ? Colors.white : Colors.black,
+                    onTap: () => _navMenuEvent('drone'),
+                  ),
                 ],
               ),
             ),
           ),
 
           // Small Right Toggle Button (like original)
-          if (_showMonitorButton.isNotEmpty)
+          if (_showMonitorButton.isNotEmpty && _showMonitorButton != 'drone')
             Positioned(
               top: 10,
               right: 40,
@@ -414,6 +478,21 @@ class HomeViewState extends State<HomeView> {
               maintainAnimation: true,
               maintainSize: false,
               child: TkdPanel(
+                onClose: () => _setShowPanel(""),
+              ),
+            ),
+          ),
+
+          Positioned(
+            top: 10,
+            right: 40,
+            bottom: 10,
+            child: Visibility(
+              visible: _isShowPanel == 'drone',
+              maintainState: true,
+              maintainAnimation: true,
+              maintainSize: false,
+              child: DronePanel(
                 onClose: () => _setShowPanel(""),
               ),
             ),
