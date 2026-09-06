@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'drone_area_detail_model.dart';
 
 List<DroneAreaModel> droneAreaModelFromJson(String str) =>
     List<DroneAreaModel>.from(json.decode(str).map((x) => DroneAreaModel.fromJson(x)));
@@ -17,6 +18,7 @@ class DroneAreaModel {
   final double lat;
   final double lng;
   final int hasDrone;
+  List<DroneAreaDetailModel> detailData;
 
   DroneAreaModel({
     required this.kabkotaId,
@@ -29,6 +31,7 @@ class DroneAreaModel {
     required this.lat,
     required this.lng,
     required this.hasDrone,
+    required this.detailData
   });
 
   factory DroneAreaModel.fromJson(Map<String, dynamic> json) =>
@@ -43,6 +46,7 @@ class DroneAreaModel {
         lat: (json["lat"] as num?)?.toDouble() ?? 0.0,
         lng: (json["lng"] as num?)?.toDouble() ?? 0.0,
         hasDrone: json["has_drone"] as bool ? 1 : 0,
+        detailData: []
       );
 
   Map<String, dynamic> toJson() => {
@@ -56,5 +60,6 @@ class DroneAreaModel {
         "lat": lat,
         "lng": lng,
         "has_drone": hasDrone,
+        "detailData": detailData
       };
 }

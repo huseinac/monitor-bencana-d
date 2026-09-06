@@ -225,9 +225,6 @@ class HomeViewState extends State<HomeView> {
               final response = await http.get(videoUri);
               if (response.statusCode == 200) {
                 await vidFile.writeAsBytes(response.bodyBytes);
-                debugPrint("============== Video Downloaded ==============");
-                debugPrint(vidFileName);
-                debugPrint("==============================================");
               } else {
                 debugPrint('Failed video HTTP status ${response.statusCode} for $videoUrlStr');
               }

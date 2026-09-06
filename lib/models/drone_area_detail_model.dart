@@ -17,7 +17,7 @@ class DroneAreaDetailModel {
   final String satellite_analysis;
   final String drone_badge;
   final String drone_analysis;
-  final List<DroneVideoDataModel> videoData;
+  List<DroneVideoDataModel> videoData;
 
   DroneAreaDetailModel({
     required this.id,
@@ -35,7 +35,7 @@ class DroneAreaDetailModel {
   factory DroneAreaDetailModel.fromJson(Map<String, dynamic> json) =>
   DroneAreaDetailModel(
     id: json["id"] as int? ?? 0,
-    kabkotaId: json["kabkotaId"] as int? ?? 0,
+    kabkotaId: json["kabkota_id"] as int? ?? 0,
     name: json["name"] as String? ?? "",
     title: json["title"] as String? ?? "",
     disclaimer: json["disclaimer"] as String? ?? "",

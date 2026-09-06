@@ -9,9 +9,11 @@ import 'controllers/status_anggaran_controller.dart';
 import 'controllers/status_pelaksanaan_controller.dart';
 import 'controllers/kategori_paket_pekerjaan_controller.dart';
 import 'controllers/drone_area_controller.dart';
+import 'package:video_player_win/video_player_win.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  WindowsVideoPlayer.registerWith(); // Registers Windows native player
   runApp(
     MultiProvider(
       providers: [

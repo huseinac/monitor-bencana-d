@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../models/drone_area_model.dart';
+import '../models/drone_area_detail_model.dart';
+import '../models/drone_video_data_model.dart';
 
 List<DroneAreaModel> _parseDroneAreaIsolate(String filePath) {
   final file = File(filePath);
@@ -10,6 +13,24 @@ List<DroneAreaModel> _parseDroneAreaIsolate(String filePath) {
   }
   final jsonString = file.readAsStringSync();
   return droneAreaModelFromJson(jsonString);
+}
+
+List<DroneAreaDetailModel> _parseDroneAreaDetailIsolate(String filePath) {
+  final file = File(filePath);
+  if (!file.existsSync()) {
+    throw Exception("File not found at $filePath");
+  }
+  final jsonString = file.readAsStringSync();
+  return droneAreaDetailModelFromJson(jsonString);
+}
+
+List<DroneVideoDataModel> _parseDroneVideoDataIsolate(String filePath) {
+  final file = File(filePath);
+  if (!file.existsSync()) {
+    throw Exception("File not found at $filePath");
+  }
+  final jsonString = file.readAsStringSync();
+  return droneVideoDataModelFromJson(jsonString);
 }
 
 class DroneAreaController extends ChangeNotifier {
@@ -50,21 +71,44 @@ class DroneAreaController extends ChangeNotifier {
       throw Exception("Could not find USERPROFILE environment variable.");
     }
 
-    final String targetPath =
-        '$userProfile\\AppData\\Roaming\\SatgasPRR\\monitor_bencana_d\\json_data\\kabkota.json';
+    final String areaJson = '$userProfile\\AppData\\Roaming\\SatgasPRR\\monitor_bencana_d\\json_data\\kabkota.json';
 
     try {
       _isLoading = true;
       _error = null;
-      notifyListeners();
 
-      debugPrint('Loading ringkasan kab/kota data from: $targetPath');
+      debugPrint('Loading ringkasan kab/kota data from: $areaJson');
 
-      final List<DroneAreaModel> result =
-          await Isolate.run(() => _parseDroneAreaIsolate(targetPath));
+      final List<DroneAreaModel> result = await Isolate.run(() => _parseDroneAreaIsolate(areaJson));
 
       _data = result;
+      _data.forEach((x) async {
+        String areaDetailJson = '$userProfile\\AppData\\Roaming\\SatgasPRR\\monitor_bencana_d\\json_data\\drone${x.kabkotaId}.json';
+        final fileAreaDetail = File(areaDetailJson);
+
+        if (!fileAreaDetail.existsSync()) {
+          x.detailData = [];
+          return;
+        }
+
+        final List<DroneAreaDetailModel> resultx = await Isolate.run(() => _parseDroneAreaDetailIsolate(areaDetailJson));
+        x.detailData = resultx;
+
+        x.detailData.forEach((y) async {
+          final fileVideoData = File(areaDetailJson);
+
+          if (!fileVideoData.existsSync()) {
+            y.videoData = [];
+            return;
+          }
+
+          final List<DroneVideoDataModel> resulty = await Isolate.run(() => _parseDroneVideoDataIsolate(areaDetailJson));
+          y.videoData = resulty;
+        });
+      });
+
       _isLoaded = true;
+      notifyListeners();
     } catch (e) {
       _error = e.toString();
       _isLoaded = false;

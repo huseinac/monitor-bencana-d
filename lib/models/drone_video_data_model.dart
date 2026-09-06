@@ -1,7 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 List<DroneVideoDataModel> droneVideoDataModelFromJson(String str) =>
-    List<DroneVideoDataModel>.from(json.decode(str).map((x) => DroneVideoDataModel.fromJson(x)));
+    List<DroneVideoDataModel>.from(json.decode(str)[0]['views'].map((x) => DroneVideoDataModel.fromJson(x)));
 
 String DroneVideoDataModelToJson(List<DroneVideoDataModel> data) =>
     json.encode(List<dynamic>.from(data.map((x) => x.toJson())));
@@ -30,7 +31,7 @@ class DroneVideoDataModel {
     latitude: _parseDouble(json["latitude"]),
     longitude: _parseDouble(json["longitude"]),
     title: json["title"] as String? ?? "",
-    url: json["url"] as String? ?? "",
+    url: json["videos"]?[0]?["url"] != '' ? ((Platform.environment['APPDATA']?? "") + "\\SatgasPRR\\monitor_bencana_d\\droneVideo\\" + Uri.parse(json["videos"]?[0]?["url"]).pathSegments.last ) : "",
   );
 
   Map<String, dynamic> toJson() => {
